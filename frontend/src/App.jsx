@@ -220,6 +220,34 @@ import DeletedAuditLogsList from "./pages/audit-logs/DeletedAuditLogsList";
 
 /*
 |--------------------------------------------------------------------------
+| Parent Portal
+|--------------------------------------------------------------------------
+*/
+
+import ParentPortalLayout from "./components/parent-portal/ParentPortalLayout";
+
+import ParentPortalDashboard from "./pages/parent-portal/ParentPortalDashboard";
+
+import ParentChildren from "./pages/parent-portal/ParentChildren";
+
+import ParentChildProfile from "./pages/parent-portal/ParentChildProfile";
+
+import ParentAttendance from "./pages/parent-portal/ParentAttendance";
+
+import ParentFees from "./pages/parent-portal/ParentFees";
+
+import ParentTimetable from "./pages/parent-portal/ParentTimetable";
+
+import ParentAcademics from "./pages/parent-portal/ParentAcademics";
+
+import ParentNotices from "./pages/parent-portal/ParentNotices";
+
+import ParentMessages from "./pages/parent-portal/ParentMessages";
+
+import ParentProfile from "./pages/parent-portal/ParentProfile";
+
+/*
+|--------------------------------------------------------------------------
 | Role Groups
 |--------------------------------------------------------------------------
 */
@@ -230,6 +258,18 @@ const ALL_DASHBOARD_ROLES = [
   "teacher",
   "accountant"
 ];
+
+const PARENT_PORTAL_ROLES = [
+  "parent"
+];
+
+const ROLE_HOME_PATHS = {
+  super_admin: "/dashboard/home",
+  principal: "/dashboard/home",
+  teacher: "/dashboard/home",
+  accountant: "/dashboard/home",
+  parent: "/parent-portal"
+};
 
 const SUPER_ADMIN_ONLY = [
   "super_admin"
@@ -477,6 +517,85 @@ const AUDIT_LOG_ROLES = [
   "principal"
 ];
 
+
+/*
+|--------------------------------------------------------------------------
+| Role-Aware Home Redirect
+|--------------------------------------------------------------------------
+|
+| ہر authenticated user کو اس کے متعلقہ portal پر بھیجتا ہے۔
+| Parent کو Parent Portal اور dashboard staff کو Dashboard Home ملتا ہے۔
+|
+*/
+
+const RoleHomeRedirect = () => {
+  const {
+    user,
+    initializing
+  } = useAuth();
+
+  if (initializing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-7 w-7 animate-spin rounded-full border-2 border-brand-500 border-t-transparent" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  if (user.mustChangePassword) {
+    return (
+      <Navigate
+        to="/change-password"
+        replace
+      />
+    );
+  }
+
+  const role =
+    String(
+      user.role || ""
+    ).toLowerCase();
+
+  const destination =
+    ROLE_HOME_PATHS[role];
+
+  if (destination) {
+    return (
+      <Navigate
+        to={destination}
+        replace
+      />
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+      <div className="card w-full max-w-lg p-8 text-center">
+        <h1 className="text-xl font-bold text-slate-800">
+          Portal Not Configured
+        </h1>
+
+        <p className="mt-3 text-sm leading-6 text-slate-500">
+          No application portal is currently registered for the
+          <span className="mx-1 font-semibold text-slate-700">
+            {role || "unknown"}
+          </span>
+          role.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 /*
 |--------------------------------------------------------------------------
 | Mandatory Password Change Guard
@@ -565,13 +684,45 @@ function App() {
 
       {/*
       |--------------------------------------------------------------------------
+      | Shared Change Password Route
+      |--------------------------------------------------------------------------
+      |
+      | یہ route Parent سمیت تمام authenticated users کے لیے available ہے۔
+      | Password change کے بعد /dashboard role-aware redirect درست portal کھولے گا۔
+      |
+      */}
+
+      <Route
+        path="/change-password"
+        element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6">
+              <ChangePassword />
+            </div>
+          </ProtectedRoute>
+        }
+      />
+
+      {/*
+      |--------------------------------------------------------------------------
+      | Role-Aware Dashboard Entry
+      |--------------------------------------------------------------------------
+      */}
+
+      <Route
+        path="/dashboard"
+        element={<RoleHomeRedirect />}
+      />
+
+      {/*
+      |--------------------------------------------------------------------------
       | Protected Dashboard Layout
       |--------------------------------------------------------------------------
       */}
 
       <Route
         element={
-          <ProtectedRoute>
+          <ProtectedRoute roles={ALL_DASHBOARD_ROLES}>
             <PasswordChangeGuard>
               <DashboardLayout />
             </PasswordChangeGuard>
@@ -580,31 +731,12 @@ function App() {
       >
         {/*
         |--------------------------------------------------------------------------
-        | Change Password
-        |--------------------------------------------------------------------------
-        |
-        | تمام authenticated dashboard users اپنا password تبدیل کر سکتے ہیں۔
-        | mustChangePassword true ہونے پر PasswordChangeGuard اسی route پر
-        | لازمی redirect کرے گا۔
-        |
-        */}
-
-        <Route
-          path="/change-password"
-          element={protectElement(
-            ALL_DASHBOARD_ROLES,
-            <ChangePassword />
-          )}
-        />
-
-        {/*
-        |--------------------------------------------------------------------------
         | Dashboard
         |--------------------------------------------------------------------------
         */}
 
         <Route
-          path="/dashboard"
+          path="/dashboard/home"
           element={protectElement(
             ALL_DASHBOARD_ROLES,
             <Dashboard />
@@ -1169,6 +1301,88 @@ function App() {
         />
       </Route>
 
+
+      {/*
+      |--------------------------------------------------------------------------
+      | Parent Portal
+      |--------------------------------------------------------------------------
+      |
+      | Parent Portal DashboardLayout سے الگ رکھا گیا ہے تاکہ parent کو staff
+      | sidebar، payroll، users یا management modules تک access نہ ملے۔
+      |
+      */}
+
+      <Route
+        path="/parent-portal"
+        element={
+          <ProtectedRoute roles={PARENT_PORTAL_ROLES}>
+            <PasswordChangeGuard>
+              <ParentPortalLayout />
+            </PasswordChangeGuard>
+          </ProtectedRoute>
+        }
+      >
+        <Route
+          index
+          element={<ParentPortalDashboard />}
+        />
+
+        <Route
+          path="children"
+          element={<ParentChildren />}
+        />
+
+        <Route
+          path="children/:studentId"
+          element={<ParentChildProfile />}
+        />
+
+        <Route
+          path="attendance"
+          element={<ParentAttendance />}
+        />
+
+        <Route
+          path="fees"
+          element={<ParentFees />}
+        />
+
+        <Route
+          path="timetable"
+          element={<ParentTimetable />}
+        />
+
+        <Route
+          path="academics"
+          element={<ParentAcademics />}
+        />
+
+        <Route
+          path="notices"
+          element={<ParentNotices />}
+        />
+
+        <Route
+          path="messages"
+          element={<ParentMessages />}
+        />
+
+        <Route
+          path="profile"
+          element={<ParentProfile />}
+        />
+
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to="/parent-portal"
+              replace
+            />
+          }
+        />
+      </Route>
+
       {/*
       |--------------------------------------------------------------------------
       | Default Route
@@ -1177,12 +1391,7 @@ function App() {
 
       <Route
         path="/"
-        element={
-          <Navigate
-            to="/dashboard"
-            replace
-          />
-        }
+        element={<RoleHomeRedirect />}
       />
 
       {/*
@@ -1193,12 +1402,7 @@ function App() {
 
       <Route
         path="*"
-        element={
-          <Navigate
-            to="/dashboard"
-            replace
-          />
-        }
+        element={<RoleHomeRedirect />}
       />
     </Routes>
   );

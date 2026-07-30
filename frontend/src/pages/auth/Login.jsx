@@ -24,17 +24,139 @@ import {
 | Role Redirects
 |--------------------------------------------------------------------------
 |
-| موجودہ dashboard Super Admin، Principal، Teacher اور Accountant کے لیے
-| available ہے۔ Student اور Parent portal routes بعد میں یہاں شامل کیے جا
-| سکتے ہیں۔
+| ہر authenticated role کو اس کے متعلقہ portal پر بھیجا جاتا ہے۔
+| Parent کو Parent Portal ملتا ہے جبکہ management roles Dashboard کھولتے ہیں۔
 |
 */
 
+const DASHBOARD_ROLES = [
+  "super_admin",
+  "principal",
+  "teacher",
+  "accountant"
+];
+
 const ROLE_REDIRECTS = {
-  super_admin: "/dashboard",
-  principal: "/dashboard",
-  teacher: "/dashboard",
-  accountant: "/dashboard"
+  super_admin:
+    "/dashboard/home",
+
+  principal:
+    "/dashboard/home",
+
+  teacher:
+    "/dashboard/home",
+
+  accountant:
+    "/dashboard/home",
+
+  parent:
+    "/parent-portal"
+};
+
+/*
+|--------------------------------------------------------------------------
+| Redirect Helpers
+|--------------------------------------------------------------------------
+*/
+
+const getRequestedPath = (
+  from
+) => {
+  if (
+    typeof from ===
+    "string"
+  ) {
+    return from;
+  }
+
+  if (
+    from &&
+    typeof from.pathname ===
+      "string"
+  ) {
+    return `${from.pathname}${from.search || ""}${from.hash || ""}`;
+  }
+
+  return "";
+};
+
+const isSafeInternalPath = (
+  path
+) => {
+  return (
+    typeof path ===
+      "string" &&
+    path.startsWith("/") &&
+    !path.startsWith("//") &&
+    path !==
+      "/login"
+  );
+};
+
+const getRoleRedirect = ({
+  role,
+  mustChangePassword = false,
+  requestedPath = ""
+}) => {
+  if (
+    mustChangePassword
+  ) {
+    return "/change-password";
+  }
+
+  const normalizedRole =
+    String(
+      role || ""
+    ).toLowerCase();
+
+  const defaultPath =
+    ROLE_REDIRECTS[
+      normalizedRole
+    ] ||
+    "/dashboard";
+
+  if (
+    !isSafeInternalPath(
+      requestedPath
+    )
+  ) {
+    return defaultPath;
+  }
+
+  if (
+    normalizedRole ===
+    "parent"
+  ) {
+    const isParentPortalPath =
+      requestedPath ===
+        "/parent-portal" ||
+      requestedPath.startsWith(
+        "/parent-portal/"
+      );
+
+    return isParentPortalPath
+      ? requestedPath
+      : defaultPath;
+  }
+
+  if (
+    DASHBOARD_ROLES.includes(
+      normalizedRole
+    )
+  ) {
+    const isParentPortalPath =
+      requestedPath ===
+        "/parent-portal" ||
+      requestedPath.startsWith(
+        "/parent-portal/"
+      );
+
+    return isParentPortalPath
+      ? defaultPath
+      : requestedPath;
+  }
+
+  return defaultPath;
 };
 
 const Login = () => {
@@ -74,6 +196,12 @@ const Login = () => {
     setLoading
   ] = useState(false);
 
+  const requestedPath =
+    getRequestedPath(
+      location.state
+        ?.from
+    );
+
   /*
   |--------------------------------------------------------------------------
   | Already Authenticated User
@@ -81,24 +209,22 @@ const Login = () => {
   */
 
   if (user) {
-    const currentRole =
-      String(
-        user.role || ""
-      ).toLowerCase();
-
     const redirectPath =
-      ROLE_REDIRECTS[
-        currentRole
-      ] ||
-      "/dashboard";
+      getRoleRedirect({
+        role:
+          user.role,
+
+        mustChangePassword:
+          Boolean(
+            user.mustChangePassword
+          ),
+
+        requestedPath
+      });
 
     return (
       <Navigate
-        to={
-          location.state
-            ?.from ||
-          redirectPath
-        }
+        to={redirectPath}
         replace
       />
     );
@@ -131,19 +257,20 @@ const Login = () => {
             password
           );
 
-        const role =
-          String(
-            loggedInUser?.role ||
-            ""
-          ).toLowerCase();
-
         const redirectPath =
-          location.state
-            ?.from ||
-          ROLE_REDIRECTS[
-            role
-          ] ||
-          "/dashboard";
+          getRoleRedirect({
+            role:
+              loggedInUser
+                ?.role,
+
+            mustChangePassword:
+              Boolean(
+                loggedInUser
+                  ?.mustChangePassword
+              ),
+
+            requestedPath
+          });
 
         navigate(
           redirectPath,
@@ -185,7 +312,7 @@ const Login = () => {
             </h1>
 
             <p className="mt-1 text-sm text-slate-400">
-              Sign in to access your assigned dashboard
+              Sign in to access your assigned portal
             </p>
           </div>
         </div>
@@ -327,7 +454,8 @@ const Login = () => {
           </button>
 
           <p className="mt-4 text-center text-xs leading-5 text-slate-400">
-            Super Admin, Principal, Teacher and Accountant accounts can sign in from this page.
+            Super Admin, Principal, Teacher, Accountant and Parent accounts can
+            sign in from this page.
           </p>
         </form>
       </div>
