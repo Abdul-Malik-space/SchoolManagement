@@ -1,14 +1,45 @@
 const mongoose = require("mongoose");
 
-const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(process.env.MONGO_URI);
+let connectionPromise = null;
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`MongoDB Connection Error: ${error.message}`);
-    process.exit(1);
+const connectDB = async () => {
+  // Connection پہلے ہی تیار ہے
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
   }
+
+  if (!process.env.MONGO_URI) {
+    throw new Error(
+      "MONGO_URI is missing from environment variables."
+    );
+  }
+
+  // ایک ہی وقت میں متعدد connections بننے سے روکیں
+  if (!connectionPromise) {
+    connectionPromise = mongoose
+      .connect(process.env.MONGO_URI, {
+        serverSelectionTimeoutMS: 15000,
+        maxPoolSize: 10,
+      })
+      .then((mongooseInstance) => {
+        console.log(
+          `MongoDB Connected: ${mongooseInstance.connection.host}`
+        );
+
+        return mongooseInstance.connection;
+      })
+      .catch((error) => {
+        connectionPromise = null;
+
+        console.error(
+          `MongoDB Connection Error: ${error.message}`
+        );
+
+        throw error;
+      });
+  }
+
+  return connectionPromise;
 };
 
 module.exports = connectDB;
