@@ -26,6 +26,7 @@ import {
   FilePlus2,
   GraduationCap,
   History,
+  KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -60,6 +61,20 @@ const navigationItems = [
       "Dashboard overview and statistics",
     path: "/dashboard",
     icon: LayoutDashboard,
+    roles: [
+      "super_admin",
+      "principal",
+      "teacher",
+      "accountant"
+    ]
+  },
+
+  {
+    label: "Change Password",
+    description:
+      "Update your account password and security",
+    path: "/change-password",
+    icon: KeyRound,
     roles: [
       "super_admin",
       "principal",
@@ -840,6 +855,25 @@ const getPageInformation = (
         "Audit Log Details",
       parent:
         "Audit Logs"
+    };
+  }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Account Security Route
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    pathname ===
+    "/change-password"
+  ) {
+    return {
+      title:
+        "Change Password",
+
+      parent:
+        "Account Security"
     };
   }
 
@@ -1853,6 +1887,25 @@ export const Topbar = ({
                     </p>
                   </div>
                 </div>
+
+                {user?.mustChangePassword && (
+                  <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <KeyRound
+                      size={16}
+                      className="shrink-0 text-amber-600"
+                    />
+
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">
+                        Account security
+                      </p>
+
+                      <p className="truncate text-xs font-semibold text-amber-800">
+                        Password update required
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/*
@@ -1880,6 +1933,26 @@ export const Topbar = ({
                   />
 
                   My Dashboard
+                </button>
+
+                <button
+                  type="button"
+                  className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-600 transition hover:bg-brand-50 hover:text-brand-700"
+                  onClick={() => {
+                    setProfileOpen(
+                      false
+                    );
+
+                    navigate(
+                      "/change-password"
+                    );
+                  }}
+                >
+                  <KeyRound
+                    size={17}
+                  />
+
+                  Change Password
                 </button>
 
                 <button

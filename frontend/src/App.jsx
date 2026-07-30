@@ -1,7 +1,8 @@
 import {
   Navigate,
   Route,
-  Routes
+  Routes,
+  useLocation
 } from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -10,6 +11,10 @@ import {
   DashboardLayout
 } from "./components/layout/DashboardLayout";
 
+import {
+  useAuth
+} from "./context/AuthContext";
+
 /*
 |--------------------------------------------------------------------------
 | Authentication
@@ -17,6 +22,8 @@ import {
 */
 
 import Login from "./pages/auth/Login";
+
+import ChangePassword from "./pages/auth/ChangePassword";
 
 /*
 |--------------------------------------------------------------------------
@@ -472,6 +479,55 @@ const AUDIT_LOG_ROLES = [
 
 /*
 |--------------------------------------------------------------------------
+| Mandatory Password Change Guard
+|--------------------------------------------------------------------------
+|
+| Admin reset کے بعد user.mustChangePassword true ہو تو user dashboard یا
+| کسی دوسرے module میں داخل نہیں ہو سکے گا۔ اسے پہلے /change-password route
+| مکمل کرنا ہوگا۔
+|
+*/
+
+const PasswordChangeGuard = ({
+  children
+}) => {
+  const {
+    user
+  } = useAuth();
+
+  const location =
+    useLocation();
+
+  const passwordUpdateRequired =
+    Boolean(
+      user?.mustChangePassword
+    );
+
+  const isChangePasswordPage =
+    location.pathname ===
+    "/change-password";
+
+  if (
+    passwordUpdateRequired &&
+    !isChangePasswordPage
+  ) {
+    return (
+      <Navigate
+        to="/change-password"
+        replace
+        state={{
+          from:
+            location.pathname
+        }}
+      />
+    );
+  }
+
+  return children;
+};
+
+/*
+|--------------------------------------------------------------------------
 | Protected Element Helper
 |--------------------------------------------------------------------------
 */
@@ -516,10 +572,31 @@ function App() {
       <Route
         element={
           <ProtectedRoute>
-            <DashboardLayout />
+            <PasswordChangeGuard>
+              <DashboardLayout />
+            </PasswordChangeGuard>
           </ProtectedRoute>
         }
       >
+        {/*
+        |--------------------------------------------------------------------------
+        | Change Password
+        |--------------------------------------------------------------------------
+        |
+        | تمام authenticated dashboard users اپنا password تبدیل کر سکتے ہیں۔
+        | mustChangePassword true ہونے پر PasswordChangeGuard اسی route پر
+        | لازمی redirect کرے گا۔
+        |
+        */}
+
+        <Route
+          path="/change-password"
+          element={protectElement(
+            ALL_DASHBOARD_ROLES,
+            <ChangePassword />
+          )}
+        />
+
         {/*
         |--------------------------------------------------------------------------
         | Dashboard
