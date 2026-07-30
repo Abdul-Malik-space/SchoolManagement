@@ -10,6 +10,10 @@ const cookieParser = require(
   "cookie-parser"
 );
 
+const connectDB = require(
+  "./config/db"
+);
+
 /*
 |--------------------------------------------------------------------------
 | Route Imports
@@ -263,6 +267,51 @@ app.use(
 
 app.use(
   cookieParser()
+);
+
+/*
+|--------------------------------------------------------------------------
+| Database Connection Middleware
+|--------------------------------------------------------------------------
+|
+| Vercel serverless function ہر cold start پر server.js لازماً execute نہیں
+| کرتی۔ اس middleware کی وجہ سے ہر API request route چلنے سے پہلے MongoDB
+| connection مکمل ہونے کا انتظار کرے گی۔
+|
+| connectDB اندر cached promise استعمال کرتا ہے، اس لیے ایک ہی function
+| instance میں غیر ضروری نئی connections نہیں بنیں گی۔
+|
+*/
+
+app.use(
+  "/api",
+  async (
+    req,
+    res,
+    next
+  ) => {
+    try {
+      await connectDB();
+
+      return next();
+    } catch (error) {
+      console.error(
+        "Database connection middleware error:",
+        error.message
+      );
+
+      const databaseError = new Error(
+        "Database connection is currently unavailable. Please try again."
+      );
+
+      databaseError.statusCode = 503;
+      databaseError.cause = error;
+
+      return next(
+        databaseError
+      );
+    }
+  }
 );
 
 /*
