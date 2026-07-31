@@ -126,6 +126,16 @@ const parentPortalRoutes = require(
 
 /*
 |--------------------------------------------------------------------------
+| Parent–Student Link Management
+|--------------------------------------------------------------------------
+*/
+
+const parentStudentLinkRoutes = require(
+  "./routes/parentStudentLinkRoutes"
+);
+
+/*
+|--------------------------------------------------------------------------
 | Portal Messaging
 |--------------------------------------------------------------------------
 */
@@ -535,6 +545,21 @@ app.use(
 app.use(
   "/api/parent-portal",
   parentPortalRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| Parent–Student Link Management
+|--------------------------------------------------------------------------
+|
+| Super Admin اور Principal Parent accounts کو Students کے ساتھ link،
+| update، verify، activate، deactivate، unlink اور restore کر سکتے ہیں۔
+|
+*/
+
+app.use(
+  "/api/parent-student-links",
+  parentStudentLinkRoutes
 );
 
 /*
