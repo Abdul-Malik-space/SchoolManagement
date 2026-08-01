@@ -22,6 +22,7 @@ import {
   FileText,
   History,
   LayoutGrid,
+  MessageSquareText,
   Plus,
   Receipt,
   School,
@@ -750,6 +751,28 @@ const navItems = [
       "principal",
       "accountant"
     ]
+  },
+
+  /*
+  |--------------------------------------------------------------------------
+  | Principal Portal Messages
+  |--------------------------------------------------------------------------
+  |
+  | صرف Principal اپنے school کے Parent اور Student conversations دیکھ اور
+  | reply کر سکتا ہے۔
+  |
+  */
+
+  {
+    to: "/portal-messages",
+    label: "Portal Messages",
+    icon: MessageSquareText,
+
+    roles: [
+      "principal"
+    ],
+
+    end: true
   },
 
   {

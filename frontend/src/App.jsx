@@ -220,6 +220,14 @@ import DeletedAuditLogsList from "./pages/audit-logs/DeletedAuditLogsList";
 
 /*
 |--------------------------------------------------------------------------
+| Principal Portal Messages
+|--------------------------------------------------------------------------
+*/
+
+import PrincipalMessages from "./pages/portal/PrincipalMessages";
+
+/*
+|--------------------------------------------------------------------------
 | Parent Portal
 |--------------------------------------------------------------------------
 */
@@ -514,6 +522,16 @@ const FEE_MANAGEMENT_ROLES = [
 
 const AUDIT_LOG_ROLES = [
   "super_admin",
+  "principal"
+];
+
+/*
+|--------------------------------------------------------------------------
+| Principal Messaging Roles
+|--------------------------------------------------------------------------
+*/
+
+const PRINCIPAL_MESSAGE_ROLES = [
   "principal"
 ];
 
@@ -1267,6 +1285,24 @@ function App() {
           element={protectElement(
             FEE_MANAGEMENT_ROLES,
             <FeeCollectionDetails />
+          )}
+        />
+
+        {/*
+        |--------------------------------------------------------------------------
+        | Principal Portal Messages
+        |--------------------------------------------------------------------------
+        |
+        | Parent اور Student conversations صرف متعلقہ Principal دیکھ اور
+        | reply کر سکتا ہے۔
+        |
+        */}
+
+        <Route
+          path="/portal-messages"
+          element={protectElement(
+            PRINCIPAL_MESSAGE_ROLES,
+            <PrincipalMessages />
           )}
         />
 
