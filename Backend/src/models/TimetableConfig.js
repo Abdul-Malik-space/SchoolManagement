@@ -1042,10 +1042,7 @@ const timetableConfigSchema =
 
 timetableConfigSchema.pre(
   "validate",
-  function timetableValidation(
-    next
-  ) {
-    try {
+  function timetableValidation() {
       /*
       |--------------------------------------------------------------------------
       | Academic Year Validation
@@ -1363,7 +1360,7 @@ timetableConfigSchema.pre(
           "At least one day schedule is required."
         );
 
-        return next();
+        return;
       }
 
       const usedDays =
@@ -1688,10 +1685,6 @@ timetableConfigSchema.pre(
         }
       );
 
-      next();
-    } catch (error) {
-      next(error);
-    }
   }
 );
 

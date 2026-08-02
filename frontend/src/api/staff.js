@@ -2,6 +2,98 @@ import api from "./axios";
 
 /*
 |--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
+
+const requireId = (
+  value,
+  label = "Record ID"
+) => {
+  const normalizedValue =
+    String(
+      value || ""
+    ).trim();
+
+  if (!normalizedValue) {
+    throw new Error(
+      `${label} is required.`
+    );
+  }
+
+  return encodeURIComponent(
+    normalizedValue
+  );
+};
+
+const cleanParams = (
+  params = {}
+) => {
+  return Object.fromEntries(
+    Object.entries(
+      params
+    ).filter(
+      ([
+        ,
+        value
+      ]) =>
+        value !== undefined &&
+        value !== null &&
+        value !== ""
+    )
+  );
+};
+
+const isFormDataPayload = (
+  payload
+) => {
+  return (
+    typeof FormData !==
+      "undefined" &&
+    payload instanceof FormData
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| Mutation Request Configuration
+|--------------------------------------------------------------------------
+|
+| FormData کے ساتھ Content-Type manually set نہیں کیا جاتا۔ Browser خود
+| multipart boundary بناتا ہے۔ اگر Axios instance میں application/json
+| default موجود ہو تو undefined اسے request level پر remove کر دیتا ہے۔
+|
+*/
+
+const buildMutationConfig = (
+  payload,
+  config = {}
+) => {
+  if (
+    !isFormDataPayload(
+      payload
+    )
+  ) {
+    return config;
+  }
+
+  return {
+    ...config,
+
+    headers: {
+      ...(
+        config.headers ||
+        {}
+      ),
+
+      "Content-Type":
+        undefined
+    }
+  };
+};
+
+/*
+|--------------------------------------------------------------------------
 | Get Active Staff
 |--------------------------------------------------------------------------
 |
@@ -22,12 +114,22 @@ import api from "./axios";
 */
 
 export const getStaff = (
-  params = {}
+  params = {},
+  config = {}
 ) => {
   return api.get(
     "/staff",
     {
-      params
+      ...config,
+
+      params: cleanParams({
+        ...(
+          config.params ||
+          {}
+        ),
+
+        ...params
+      })
     }
   );
 };
@@ -49,12 +151,22 @@ export const getStaff = (
 */
 
 export const getStaffSummary = (
-  params = {}
+  params = {},
+  config = {}
 ) => {
   return api.get(
     "/staff/summary",
     {
-      params
+      ...config,
+
+      params: cleanParams({
+        ...(
+          config.params ||
+          {}
+        ),
+
+        ...params
+      })
     }
   );
 };
@@ -66,12 +178,22 @@ export const getStaffSummary = (
 */
 
 export const getDeletedStaff = (
-  params = {}
+  params = {},
+  config = {}
 ) => {
   return api.get(
     "/staff/deleted/list",
     {
-      params
+      ...config,
+
+      params: cleanParams({
+        ...(
+          config.params ||
+          {}
+        ),
+
+        ...params
+      })
     }
   );
 };
@@ -83,10 +205,18 @@ export const getDeletedStaff = (
 */
 
 export const getStaffById = (
-  id
+  id,
+  config = {}
 ) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
   return api.get(
-    `/staff/${id}`
+    `/staff/${safeId}`,
+    config
   );
 };
 
@@ -95,20 +225,32 @@ export const getStaffById = (
 | Create Staff Member
 |--------------------------------------------------------------------------
 |
+| JSON payload اور FormData دونوں supported ہیں۔
+|
+| Photo upload کے لیے:
+|
+| const formData = new FormData();
+| formData.append("photo", selectedFile);
+|
 | Super Admin:
-| schoolId request body میں دے گا۔
+| formData میں schoolId شامل کرے گا۔
 |
 | Principal:
-| Backend خود principal کا school استعمال کرے گا۔
+| Backend logged-in Principal کا assigned school استعمال کرے گا۔
 |
 */
 
 export const createStaff = (
-  payload
+  payload,
+  config = {}
 ) => {
   return api.post(
     "/staff",
-    payload
+    payload,
+    buildMutationConfig(
+      payload,
+      config
+    )
   );
 };
 
@@ -116,15 +258,62 @@ export const createStaff = (
 |--------------------------------------------------------------------------
 | Update Staff Member
 |--------------------------------------------------------------------------
+|
+| FormData photo fields:
+|
+| photo
+| removeStaffPhoto
+|
 */
 
 export const updateStaff = (
   id,
-  payload
+  payload,
+  config = {}
 ) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
   return api.put(
-    `/staff/${id}`,
-    payload
+    `/staff/${safeId}`,
+    payload,
+    buildMutationConfig(
+      payload,
+      config
+    )
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| Partial Staff Update
+|--------------------------------------------------------------------------
+|
+| PUT اور PATCH دونوں backend routes image upload کو support کرتے ہیں۔
+|
+*/
+
+export const patchStaff = (
+  id,
+  payload,
+  config = {}
+) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
+  return api.patch(
+    `/staff/${safeId}`,
+    payload,
+    buildMutationConfig(
+      payload,
+      config
+    )
   );
 };
 
@@ -145,11 +334,19 @@ export const updateStaff = (
 
 export const updateStaffStatus = (
   id,
-  payload
+  payload,
+  config = {}
 ) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
   return api.patch(
-    `/staff/${id}/status`,
-    payload
+    `/staff/${safeId}/status`,
+    payload,
+    config
   );
 };
 
@@ -160,10 +357,18 @@ export const updateStaffStatus = (
 */
 
 export const deleteStaff = (
-  id
+  id,
+  config = {}
 ) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
   return api.delete(
-    `/staff/${id}`
+    `/staff/${safeId}`,
+    config
   );
 };
 
@@ -174,9 +379,18 @@ export const deleteStaff = (
 */
 
 export const restoreStaff = (
-  id
+  id,
+  config = {}
 ) => {
+  const safeId =
+    requireId(
+      id,
+      "Staff ID"
+    );
+
   return api.patch(
-    `/staff/${id}/restore`
+    `/staff/${safeId}/restore`,
+    {},
+    config
   );
 };

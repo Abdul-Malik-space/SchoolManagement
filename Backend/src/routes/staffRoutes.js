@@ -29,6 +29,14 @@ const validateObjectId = require(
   "../middlewares/validateObjectId"
 );
 
+const {
+  uploadStaffImage,
+  handleStaffImageUploadError,
+  validateStaffImageSignature
+} = require(
+  "../middlewares/staffImageUploadMiddleware"
+);
+
 const router = express.Router();
 
 /*
@@ -56,11 +64,22 @@ const router = express.Router();
 | Create Staff Member
 |--------------------------------------------------------------------------
 |
+| Request Content-Type:
+|
+| multipart/form-data
+|
+| Image field:
+|
+| photo
+|
 | Super Admin:
-| Request body میں schoolId دے گا۔
+| FormData میں schoolId بھیجے گا۔
 |
 | Principal:
-| Staff خود بخود principal کے school میں create ہوگا۔
+| Staff خود بخود Principal کے assigned school میں create ہوگا۔
+|
+| Multer schoolScope سے پہلے چلایا گیا ہے تاکہ multipart FormData کی body
+| پہلے parse ہو جائے اور Super Admin کا schoolId req.body میں دستیاب ہو۔
 |
 */
 
@@ -71,6 +90,9 @@ router.post(
     "super_admin",
     "principal"
   ),
+  uploadStaffImage,
+  handleStaffImageUploadError,
+  validateStaffImageSignature,
   schoolScope,
   createStaff
 );
@@ -236,6 +258,22 @@ router.get(
 |--------------------------------------------------------------------------
 | Update Staff Member
 |--------------------------------------------------------------------------
+|
+| Request Content-Type:
+|
+| multipart/form-data
+|
+| New image field:
+|
+| photo
+|
+| Existing photo remove کرنے کے لیے:
+|
+| removeStaffPhoto=true
+|
+| ID اور school access پہلے validate کیے جاتے ہیں، اس کے بعد image memory
+| میں لی جاتی ہے اور controller اسے Cloudinary پر upload کرتا ہے۔
+|
 */
 
 router.put(
@@ -247,6 +285,34 @@ router.put(
   ),
   schoolScope,
   validateObjectId("id"),
+  uploadStaffImage,
+  handleStaffImageUploadError,
+  validateStaffImageSignature,
+  updateStaff
+);
+
+/*
+|--------------------------------------------------------------------------
+| Partial Update Alias
+|--------------------------------------------------------------------------
+|
+| Frontend PUT یا PATCH دونوں استعمال کر سکتا ہے۔ دونوں routes image upload
+| اور removeStaffPhoto کو support کرتے ہیں۔
+|
+*/
+
+router.patch(
+  "/:id",
+  protect,
+  authorize(
+    "super_admin",
+    "principal"
+  ),
+  schoolScope,
+  validateObjectId("id"),
+  uploadStaffImage,
+  handleStaffImageUploadError,
+  validateStaffImageSignature,
   updateStaff
 );
 

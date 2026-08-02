@@ -598,21 +598,83 @@ portalConversationSchema.pre(
     |--------------------------------------------------------------------------
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Normalize Participant Object IDs
+    |--------------------------------------------------------------------------
+    |
+    | populate() کے بعد parentUserId، studentUserId اور staffUserId مکمل
+    | Mongoose documents ہو سکتے ہیں۔ String(document) کرنے سے مکمل object
+    | string بن جاتا تھا اور participantUserIds میں ObjectId cast error آتا
+    | تھا۔ اب populated document سے صرف _id نکالی جاتی ہے۔
+    |
+    */
+
+    const normalizeParticipantId =
+      (
+        value
+      ) => {
+        if (
+          !value
+        ) {
+          return null;
+        }
+
+        const candidate =
+          value._id ||
+          value.id ||
+          value;
+
+        if (
+          candidate instanceof
+          mongoose.Types.ObjectId
+        ) {
+          return candidate;
+        }
+
+        if (
+          mongoose.Types.ObjectId.isValid(
+            candidate
+          )
+        ) {
+          return new mongoose.Types.ObjectId(
+            String(
+              candidate
+            )
+          );
+        }
+
+        return null;
+      };
+
     const participants = [
       this.parentUserId,
       this.studentUserId,
       this.staffUserId
     ]
-      .filter(Boolean)
       .map(
-        (value) =>
-          String(value)
+        normalizeParticipantId
+      )
+      .filter(
+        Boolean
       );
 
+    const uniqueParticipants =
+      new Map();
+
+    participants.forEach(
+      (
+        participantId
+      ) => {
+        uniqueParticipants.set(
+          participantId.toString(),
+          participantId
+        );
+      }
+    );
+
     this.participantUserIds = [
-      ...new Set(
-        participants
-      )
+      ...uniqueParticipants.values()
     ];
 
     /*

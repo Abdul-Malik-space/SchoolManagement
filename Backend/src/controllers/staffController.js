@@ -13,6 +13,11 @@ const {
   buildPagination
 } = require("../utils/pagination");
 
+const {
+  uploadImageBuffer,
+  deleteImageByPublicId
+} = require("../config/cloudinary");
+
 /*
 |--------------------------------------------------------------------------
 | Staff Constants
@@ -147,6 +152,261 @@ const safeNumber = (value) => {
 
 /*
 |--------------------------------------------------------------------------
+| Multipart and Staff Image Helpers
+|--------------------------------------------------------------------------
+|
+| Staff form اب multipart/form-data بھیجے گا۔ Nested objects FormData میں
+| JSON strings بن جاتے ہیں، اس لیے انہیں محفوظ طریقے سے parse کیا جاتا ہے۔
+|
+*/
+
+const parseJsonValue = (
+  value,
+  fallback
+) => {
+  if (
+    value === undefined
+  ) {
+    return undefined;
+  }
+
+  if (
+    value === null ||
+    typeof value === "object"
+  ) {
+    return value;
+  }
+
+  const normalizedValue =
+    normalizeText(value);
+
+  if (
+    !normalizedValue
+  ) {
+    return fallback;
+  }
+
+  try {
+    return JSON.parse(
+      normalizedValue
+    );
+  } catch {
+    return fallback;
+  }
+};
+
+const parseBooleanValue = (
+  value
+) => {
+  if (
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  return [
+    "true",
+    "1",
+    "yes",
+    "on"
+  ].includes(
+    normalizeText(
+      value
+    ).toLowerCase()
+  );
+};
+
+const STAFF_PHOTO_PUBLIC_ID_FIELD = [
+  "staffPhotoPublicId",
+  "staffPhotoCloudinaryId",
+  "photoPublicId"
+].find(
+  (field) =>
+    Boolean(
+      Staff.schema.path(
+        field
+      )
+    )
+) || null;
+
+const getStaffPhotoPublicId = (
+  staff
+) => {
+  if (
+    !staff ||
+    !STAFF_PHOTO_PUBLIC_ID_FIELD
+  ) {
+    return "";
+  }
+
+  return normalizeText(
+    staff[
+      STAFF_PHOTO_PUBLIC_ID_FIELD
+    ]
+  );
+};
+
+const extractCloudinaryPublicId = (
+  imageUrl
+) => {
+  const normalizedUrl =
+    normalizeText(
+      imageUrl
+    );
+
+  if (
+    !normalizedUrl ||
+    !normalizedUrl.includes(
+      "/upload/"
+    )
+  ) {
+    return "";
+  }
+
+  try {
+    const pathname =
+      new URL(
+        normalizedUrl
+      ).pathname;
+
+    const uploadIndex =
+      pathname.indexOf(
+        "/upload/"
+      );
+
+    if (
+      uploadIndex === -1
+    ) {
+      return "";
+    }
+
+    let publicPath =
+      pathname.slice(
+        uploadIndex +
+          "/upload/".length
+      );
+
+    const pathParts =
+      publicPath
+        .split("/")
+        .filter(
+          Boolean
+        );
+
+    const versionIndex =
+      pathParts.findIndex(
+        (part) =>
+          /^v\d+$/.test(
+            part
+          )
+      );
+
+    if (
+      versionIndex >= 0
+    ) {
+      publicPath =
+        pathParts
+          .slice(
+            versionIndex +
+              1
+          )
+          .join("/");
+    }
+
+    return publicPath.replace(
+      /\.[^.\/]+$/,
+      ""
+    );
+  } catch {
+    return "";
+  }
+};
+
+const setUploadedStaffPhoto = (
+  target,
+  uploadResult
+) => {
+  target.staffPhoto =
+    uploadResult.secureUrl ||
+    uploadResult.url ||
+    "";
+
+  if (
+    STAFF_PHOTO_PUBLIC_ID_FIELD
+  ) {
+    target[
+      STAFF_PHOTO_PUBLIC_ID_FIELD
+    ] =
+      uploadResult.publicId ||
+      "";
+  }
+};
+
+const clearStaffPhoto = (
+  target
+) => {
+  target.staffPhoto =
+    "";
+
+  if (
+    STAFF_PHOTO_PUBLIC_ID_FIELD
+  ) {
+    target[
+      STAFF_PHOTO_PUBLIC_ID_FIELD
+    ] =
+      "";
+  }
+};
+
+const safelyDeleteStaffImage = async (
+  publicId
+) => {
+  const normalizedPublicId =
+    normalizeText(
+      publicId
+    );
+
+  if (
+    !normalizedPublicId
+  ) {
+    return;
+  }
+
+  try {
+    await deleteImageByPublicId(
+      normalizedPublicId
+    );
+  } catch (
+    deleteError
+  ) {
+    console.error(
+      "Staff image cleanup error:",
+      deleteError
+    );
+  }
+};
+
+const uploadStaffPhoto = async (
+  req,
+  schoolId
+) => {
+  if (
+    !req.file
+  ) {
+    return null;
+  }
+
+  return uploadImageBuffer({
+    buffer:
+      req.file.buffer,
+
+    folder:
+      `school-management/staff/${schoolId}`
+  });
+};
+
+/*
+|--------------------------------------------------------------------------
 | Controller Error Handler
 |--------------------------------------------------------------------------
 */
@@ -160,6 +420,20 @@ const handleControllerError = (
     `${defaultMessage}:`,
     error
   );
+
+  if (
+    error.statusCode &&
+    error.statusCode < 500
+  ) {
+    return res.status(
+      error.statusCode
+    ).json({
+      success: false,
+      message:
+        error.message ||
+        defaultMessage
+    });
+  }
 
   if (
     error.name === "ValidationError"
@@ -425,6 +699,8 @@ const getStaffAuditSnapshot = (
       staff.allowances,
     deductions:
       staff.deductions,
+    staffPhoto:
+      staff.staffPhoto,
     status: staff.status
   };
 };
@@ -452,7 +728,6 @@ const buildStaffPayload = (
     "maritalStatus",
     "address",
     "city",
-    "staffPhoto",
     "category",
     "department",
     "designation",
@@ -534,12 +809,34 @@ const buildStaffPayload = (
   });
 
   if (
+    payload.documents !==
+    undefined
+  ) {
+    payload.documents =
+      parseJsonValue(
+        payload.documents,
+        []
+      );
+  }
+
+  if (
     payload.documents !== undefined &&
     !Array.isArray(
       payload.documents
     )
   ) {
     payload.documents = [];
+  }
+
+  if (
+    payload.emergencyContact !==
+    undefined
+  ) {
+    payload.emergencyContact =
+      parseJsonValue(
+        payload.emergencyContact,
+        {}
+      );
   }
 
   if (
@@ -1141,6 +1438,12 @@ exports.createStaff = async (
   req,
   res
 ) => {
+  let uploadedImage =
+    null;
+
+  let imageCommitted =
+    false;
+
   try {
     const schoolId =
       resolveCreateSchoolId(req);
@@ -1250,6 +1553,31 @@ exports.createStaff = async (
 
     /*
     |--------------------------------------------------------------------------
+    | Upload Staff Photo
+    |--------------------------------------------------------------------------
+    |
+    | URL input قبول نہیں کیا جاتا۔ صرف validated req.file Cloudinary پر
+    | upload ہوتی ہے۔
+    |
+    */
+
+    if (
+      req.file
+    ) {
+      uploadedImage =
+        await uploadStaffPhoto(
+          req,
+          schoolId
+        );
+
+      setUploadedStaffPhoto(
+        payload,
+        uploadedImage
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
     | Create Staff Profile
     |--------------------------------------------------------------------------
     */
@@ -1263,6 +1591,9 @@ exports.createStaff = async (
         updatedBy:
           req.user._id
       });
+
+    imageCommitted =
+      true;
 
     const populatedStaff =
       await populateStaff(
@@ -1295,12 +1626,23 @@ exports.createStaff = async (
         success: true,
 
         message:
-          "Staff member created successfully",
+          req.file
+            ? "Staff member created with photo successfully"
+            : "Staff member created successfully",
 
         staff:
           populatedStaff
       });
   } catch (error) {
+    if (
+      uploadedImage?.publicId &&
+      !imageCommitted
+    ) {
+      await safelyDeleteStaffImage(
+        uploadedImage.publicId
+      );
+    }
+
     return handleControllerError(
       res,
       error,
@@ -1600,6 +1942,12 @@ exports.updateStaff = async (
   req,
   res
 ) => {
+  let uploadedImage =
+    null;
+
+  let imageCommitted =
+    false;
+
   try {
     if (
       !isValidObjectId(
@@ -1654,9 +2002,27 @@ exports.updateStaff = async (
         staff
       );
 
+    const oldPhotoUrl =
+      normalizeText(
+        staff.staffPhoto
+      );
+
+    const oldPhotoPublicId =
+      getStaffPhotoPublicId(
+        staff
+      ) ||
+      extractCloudinaryPublicId(
+        oldPhotoUrl
+      );
+
     const payload =
       buildStaffPayload(
         req.body
+      );
+
+    const removeStaffPhoto =
+      parseBooleanValue(
+        req.body.removeStaffPhoto
       );
 
     /*
@@ -1712,6 +2078,38 @@ exports.updateStaff = async (
       }
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | Upload or Remove Staff Photo
+    |--------------------------------------------------------------------------
+    |
+    | نئی file موجود ہو تو وہ removeStaffPhoto پر priority رکھتی ہے۔
+    |
+    */
+
+    if (
+      req.file
+    ) {
+      uploadedImage =
+        await uploadStaffPhoto(
+          req,
+          getDocumentId(
+            staff.schoolId
+          )
+        );
+
+      setUploadedStaffPhoto(
+        payload,
+        uploadedImage
+      );
+    } else if (
+      removeStaffPhoto
+    ) {
+      clearStaffPhoto(
+        payload
+      );
+    }
+
     Object.entries(
       payload
     ).forEach(
@@ -1724,6 +2122,33 @@ exports.updateStaff = async (
       req.user._id;
 
     await staff.save();
+
+    imageCommitted =
+      true;
+
+    /*
+    |--------------------------------------------------------------------------
+    | Delete Replaced Cloudinary Image
+    |--------------------------------------------------------------------------
+    |
+    | Database save کامیاب ہونے کے بعد ہی پرانی image delete ہوتی ہے تاکہ
+    | failed update کی صورت میں existing photo ضائع نہ ہو۔
+    |
+    */
+
+    if (
+      (
+        req.file ||
+        removeStaffPhoto
+      ) &&
+      oldPhotoPublicId &&
+      oldPhotoPublicId !==
+        uploadedImage?.publicId
+    ) {
+      await safelyDeleteStaffImage(
+        oldPhotoPublicId
+      );
+    }
 
     const populatedStaff =
       await populateStaff(
@@ -1757,12 +2182,25 @@ exports.updateStaff = async (
       success: true,
 
       message:
-        "Staff member updated successfully",
+        req.file
+          ? "Staff member and photo updated successfully"
+          : removeStaffPhoto
+            ? "Staff photo removed successfully"
+            : "Staff member updated successfully",
 
       staff:
         populatedStaff
     });
   } catch (error) {
+    if (
+      uploadedImage?.publicId &&
+      !imageCommitted
+    ) {
+      await safelyDeleteStaffImage(
+        uploadedImage.publicId
+      );
+    }
+
     return handleControllerError(
       res,
       error,

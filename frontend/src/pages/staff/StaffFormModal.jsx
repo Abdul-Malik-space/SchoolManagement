@@ -7,7 +7,9 @@ import {
 import {
   BriefcaseBusiness,
   Building2,
+  Camera,
   FileText,
+  ImagePlus,
   Landmark,
   Loader2,
   Phone,
@@ -15,7 +17,8 @@ import {
   ShieldCheck,
   Trash2,
   UserRound,
-  Wallet
+  Wallet,
+  X
 } from "lucide-react";
 
 import {
@@ -168,6 +171,16 @@ const MARITAL_STATUS_OPTIONS = [
   }
 ];
 
+
+const MAX_STAFF_PHOTO_SIZE =
+  5 * 1024 * 1024;
+
+const STAFF_PHOTO_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp"
+];
+
 /*
 |--------------------------------------------------------------------------
 | Empty Document
@@ -202,7 +215,6 @@ const createEmptyForm = () => ({
   maritalStatus: "single",
   address: "",
   city: "",
-  staffPhoto: "",
 
   category: "",
   department: "",
@@ -404,6 +416,22 @@ const StaffFormModal = ({
     setError
   ] = useState("");
 
+
+  const [
+    selectedPhoto,
+    setSelectedPhoto
+  ] = useState(null);
+
+  const [
+    photoPreview,
+    setPhotoPreview
+  ] = useState("");
+
+  const [
+    removeStaffPhoto,
+    setRemoveStaffPhoto
+  ] = useState(false);
+
   /*
   |--------------------------------------------------------------------------
   | Populate Form
@@ -416,6 +444,12 @@ const StaffFormModal = ({
     }
 
     setError("");
+    setSelectedPhoto(null);
+    setRemoveStaffPhoto(false);
+    setPhotoPreview(
+      staff?.staffPhoto ||
+      ""
+    );
 
     if (!staff) {
       setForm(
@@ -475,9 +509,6 @@ const StaffFormModal = ({
 
       city:
         staff.city || "",
-
-      staffPhoto:
-        staff.staffPhoto || "",
 
       category:
         staff.category || "",
@@ -580,6 +611,28 @@ const StaffFormModal = ({
   }, [
     open,
     staff
+  ]);
+
+  /*
+  |--------------------------------------------------------------------------
+  | Release Local Photo Preview
+  |--------------------------------------------------------------------------
+  */
+
+  useEffect(() => {
+    return () => {
+      if (
+        photoPreview.startsWith(
+          "blob:"
+        )
+      ) {
+        URL.revokeObjectURL(
+          photoPreview
+        );
+      }
+    };
+  }, [
+    photoPreview
   ]);
 
   /*
@@ -794,6 +847,106 @@ const StaffFormModal = ({
           ...current,
           [field]: value
         })
+      );
+
+      setError("");
+    };
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | Staff Photo Selection
+  |--------------------------------------------------------------------------
+  */
+
+  const handlePhotoChange = (
+    event
+  ) => {
+    const file =
+      event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    if (
+      !STAFF_PHOTO_TYPES.includes(
+        file.type
+      )
+    ) {
+      setError(
+        "Please select a JPG, PNG or WebP image."
+      );
+
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    if (
+      file.size >
+      MAX_STAFF_PHOTO_SIZE
+    ) {
+      setError(
+        "Staff image size cannot exceed 5 MB."
+      );
+
+      event.target.value =
+        "";
+
+      return;
+    }
+
+    setSelectedPhoto(
+      file
+    );
+
+    setRemoveStaffPhoto(
+      false
+    );
+
+    setPhotoPreview(
+      URL.createObjectURL(
+        file
+      )
+    );
+
+    setError("");
+  };
+
+  const handleRemovePhoto =
+    () => {
+      setSelectedPhoto(
+        null
+      );
+
+      setPhotoPreview(
+        ""
+      );
+
+      setRemoveStaffPhoto(
+        Boolean(
+          staff?.staffPhoto
+        )
+      );
+
+      setError("");
+    };
+
+  const handleRestoreExistingPhoto =
+    () => {
+      setSelectedPhoto(
+        null
+      );
+
+      setPhotoPreview(
+        staff?.staffPhoto ||
+        ""
+      );
+
+      setRemoveStaffPhoto(
+        false
       );
 
       setError("");
@@ -1015,6 +1168,23 @@ const StaffFormModal = ({
     }
 
     if (
+      selectedPhoto &&
+      !STAFF_PHOTO_TYPES.includes(
+        selectedPhoto.type
+      )
+    ) {
+      return "Please select a JPG, PNG or WebP image.";
+    }
+
+    if (
+      selectedPhoto &&
+      selectedPhoto.size >
+        MAX_STAFF_PHOTO_SIZE
+    ) {
+      return "Staff image size cannot exceed 5 MB.";
+    }
+
+    if (
       form.dateOfBirth &&
       form.joiningDate &&
       form.dateOfBirth >=
@@ -1147,9 +1317,6 @@ const StaffFormModal = ({
       city:
         form.city.trim(),
 
-      staffPhoto:
-        form.staffPhoto.trim(),
-
       category:
         form.category,
 
@@ -1267,6 +1434,84 @@ const StaffFormModal = ({
 
   /*
   |--------------------------------------------------------------------------
+  | Build Multipart FormData
+  |--------------------------------------------------------------------------
+  |
+  | Backend route multipart/form-data قبول کرتا ہے۔ Browser خود boundary
+  | کے ساتھ Content-Type set کرے گا، اس لیے یہاں manual header نہیں لگانا۔
+  |
+  */
+
+  const buildFormDataPayload =
+    () => {
+      const payload =
+        buildPayload();
+
+      const formData =
+        new FormData();
+
+      Object.entries(
+        payload
+      ).forEach(
+        (
+          [
+            field,
+            value
+          ]
+        ) => {
+          if (
+            field ===
+              "emergencyContact" ||
+            field ===
+              "documents"
+          ) {
+            formData.append(
+              field,
+              JSON.stringify(
+                value
+              )
+            );
+
+            return;
+          }
+
+          formData.append(
+            field,
+            value === null ||
+            value === undefined
+              ? ""
+              : String(
+                  value
+                )
+          );
+        }
+      );
+
+      if (
+        selectedPhoto
+      ) {
+        formData.append(
+          "photo",
+          selectedPhoto
+        );
+      }
+
+      if (
+        isEdit &&
+        removeStaffPhoto &&
+        !selectedPhoto
+      ) {
+        formData.append(
+          "removeStaffPhoto",
+          "true"
+        );
+      }
+
+      return formData;
+    };
+
+  /*
+  |--------------------------------------------------------------------------
   | Submit
   |--------------------------------------------------------------------------
   */
@@ -1294,16 +1539,16 @@ const StaffFormModal = ({
       setError("");
 
       try {
-        const payload =
-          buildPayload();
+        const formData =
+          buildFormDataPayload();
 
         const { data } = isEdit
           ? await updateStaff(
               staff._id,
-              payload
+              formData
             )
           : await createStaff(
-              payload
+              formData
             );
 
         if (onSaved) {
@@ -1342,6 +1587,9 @@ const StaffFormModal = ({
     }
 
     setError("");
+    setSelectedPhoto(null);
+    setPhotoPreview("");
+    setRemoveStaffPhoto(false);
     onClose();
   };
 
@@ -1753,23 +2001,116 @@ const StaffFormModal = ({
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2 xl:col-span-3">
               <label className="field-label">
-                Photo URL
+                Staff Photo
               </label>
 
-              <input
-                type="url"
-                className="field-input"
-                value={
-                  form.staffPhoto
-                }
-                onChange={updateField(
-                  "staffPhoto"
-                )}
-                placeholder="https://..."
-                disabled={submitting}
-              />
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                  <div className="relative flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-300 shadow-sm">
+                    {photoPreview ? (
+                      <img
+                        src={photoPreview}
+                        alt="Staff preview"
+                        className="h-full w-full object-cover"
+                        onError={() => {
+                          setPhotoPreview("");
+                        }}
+                      />
+                    ) : (
+                      <Camera
+                        size={34}
+                        strokeWidth={1.6}
+                      />
+                    )}
+
+                    {photoPreview && (
+                      <button
+                        type="button"
+                        className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow transition hover:bg-rose-700 disabled:opacity-60"
+                        onClick={
+                          handleRemovePhoto
+                        }
+                        disabled={
+                          submitting
+                        }
+                        aria-label="Remove staff photo"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <input
+                      id="staff-photo-file"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      onChange={
+                        handlePhotoChange
+                      }
+                      disabled={
+                        submitting
+                      }
+                    />
+
+                    <div className="flex flex-wrap gap-2">
+                      <label
+                        htmlFor="staff-photo-file"
+                        className={`btn-secondary cursor-pointer ${
+                          submitting
+                            ? "pointer-events-none opacity-60"
+                            : ""
+                        }`}
+                      >
+                        <ImagePlus size={16} />
+
+                        {photoPreview
+                          ? "Change Photo"
+                          : "Choose Photo"}
+                      </label>
+
+                      {isEdit &&
+                        removeStaffPhoto &&
+                        staff?.staffPhoto && (
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={
+                              handleRestoreExistingPhoto
+                            }
+                            disabled={
+                              submitting
+                            }
+                          >
+                            Restore Existing
+                          </button>
+                        )}
+                    </div>
+
+                    <p className="mt-3 text-xs leading-5 text-slate-500">
+                      Select a photo from this device. JPG, PNG and WebP files are allowed. Maximum size is 5 MB.
+                    </p>
+
+                    {selectedPhoto && (
+                      <p className="mt-2 truncate text-xs font-semibold text-brand-700">
+                        Selected:{" "}
+                        {selectedPhoto.name}
+                      </p>
+                    )}
+
+                    {isEdit &&
+                      removeStaffPhoto &&
+                      !selectedPhoto && (
+                        <p className="mt-2 text-xs font-semibold text-rose-600">
+                          The existing photo will be removed when you save the staff record.
+                        </p>
+                      )}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="md:col-span-2 xl:col-span-3">
