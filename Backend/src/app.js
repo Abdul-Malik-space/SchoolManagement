@@ -167,15 +167,87 @@ const app = express();
 |--------------------------------------------------------------------------
 | Allowed Frontend Origins
 |--------------------------------------------------------------------------
+|
+| CLIENT_URL:
+| ایک frontend URL کے لیے۔
+|
+| CLIENT_URLS / FRONTEND_URLS:
+| comma، semicolon یا نئی لائن سے الگ متعدد frontend URLs کے لیے۔
+|
+| URLs normalize کیے جاتے ہیں تاکہ آخر میں موجود "/" کی وجہ سے CORS
+| comparison fail نہ ہو۔
+|
 */
 
-const allowedOrigins = [
+const normalizeOrigin = (
+  value
+) => {
+  return String(
+    value || ""
+  )
+    .trim()
+    .replace(
+      /\/+$/,
+      ""
+    );
+};
+
+const splitOriginList = (
+  value
+) => {
+  return String(
+    value || ""
+  )
+    .split(
+      /[,;\n]+/
+    )
+    .map(
+      normalizeOrigin
+    )
+    .filter(
+      Boolean
+    );
+};
+
+const configuredOrigins = [
   process.env.CLIENT_URL,
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174"
-].filter(Boolean);
+  process.env.CLIENT_URLS,
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URLS
+].flatMap(
+  splitOriginList
+);
+
+const allowedOrigins = new Set(
+  [
+    ...configuredOrigins,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Current Production Frontend
+    |--------------------------------------------------------------------------
+    */
+
+    "https://school-management-ivory-nine.vercel.app",
+
+    /*
+    |--------------------------------------------------------------------------
+    | Local Development Frontends
+    |--------------------------------------------------------------------------
+    */
+
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174"
+  ]
+    .map(
+      normalizeOrigin
+    )
+    .filter(
+      Boolean
+    )
+);
 
 /*
 |--------------------------------------------------------------------------
@@ -183,77 +255,100 @@ const allowedOrigins = [
 |--------------------------------------------------------------------------
 */
 
-app.use(
-  cors({
-    origin: (
-      origin,
-      callback
-    ) => {
-      /*
-      |--------------------------------------------------------------------------
-      | Allow API Tools and Server Requests
-      |--------------------------------------------------------------------------
-      |
-      | Postman، Thunder Client، mobile apps اور server-to-server requests
-      | میں origin موجود نہیں ہو سکتا۔
-      |
-      */
+const corsOptions = {
+  origin: (
+    origin,
+    callback
+  ) => {
+    /*
+    |--------------------------------------------------------------------------
+    | Allow API Tools and Server Requests
+    |--------------------------------------------------------------------------
+    |
+    | Postman، Thunder Client، mobile apps اور server-to-server requests
+    | میں Origin header موجود نہیں ہو سکتا۔
+    |
+    */
 
-      if (!origin) {
-        return callback(
-          null,
-          true
-        );
-      }
+    if (!origin) {
+      return callback(
+        null,
+        true
+      );
+    }
 
-      /*
-      |--------------------------------------------------------------------------
-      | Allow Trusted Frontend Origins
-      |--------------------------------------------------------------------------
-      */
-
-      if (
-        allowedOrigins.includes(
-          origin
-        )
-      ) {
-        return callback(
-          null,
-          true
-        );
-      }
-
-      /*
-      |--------------------------------------------------------------------------
-      | Reject Unknown Origins
-      |--------------------------------------------------------------------------
-      */
-
-      const error = new Error(
-        `CORS policy does not allow requests from origin: ${origin}`
+    const normalizedRequestOrigin =
+      normalizeOrigin(
+        origin
       );
 
-      error.statusCode = 403;
+    /*
+    |--------------------------------------------------------------------------
+    | Allow Trusted Frontend Origins
+    |--------------------------------------------------------------------------
+    */
 
-      return callback(error);
-    },
+    if (
+      allowedOrigins.has(
+        normalizedRequestOrigin
+      )
+    ) {
+      return callback(
+        null,
+        true
+      );
+    }
 
-    credentials: true,
+    /*
+    |--------------------------------------------------------------------------
+    | Reject Unknown Origins
+    |--------------------------------------------------------------------------
+    */
 
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS"
-    ],
+    console.warn(
+      "Blocked CORS origin:",
+      normalizedRequestOrigin
+    );
 
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization"
-    ]
-  })
+    const error = new Error(
+      `CORS policy does not allow requests from origin: ${normalizedRequestOrigin}`
+    );
+
+    error.statusCode = 403;
+
+    return callback(
+      error
+    );
+  },
+
+  credentials: true,
+
+  methods: [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "OPTIONS"
+  ],
+
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Accept",
+    "Origin",
+    "X-Requested-With"
+  ],
+
+  optionsSuccessStatus: 204,
+
+  maxAge: 86400
+};
+
+app.use(
+  cors(
+    corsOptions
+  )
 );
 
 /*
