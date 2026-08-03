@@ -17,6 +17,7 @@ import {
   CalendarCheck,
   CalendarDays,
   ChevronDown,
+  ClipboardCheck,
   CircleDollarSign,
   GraduationCap,
   FileText,
@@ -115,6 +116,100 @@ const navItems = [
     ]
   },
 
+
+  /*
+  |--------------------------------------------------------------------------
+  | Exam and Result Management Group
+  |--------------------------------------------------------------------------
+  |
+  | Super Admin:
+  | تمام schools کے exams دیکھ، create، edit، workflow manage، delete اور
+  | restore کر سکتا ہے۔
+  |
+  | Principal:
+  | اپنے school کے exams دیکھ اور مکمل exam workflow manage کر سکتا ہے۔
+  |
+  | Teacher:
+  | Exam list اور exam details read-only دیکھ سکتا ہے۔
+  |
+  */
+
+  {
+    label: "Examinations",
+    icon: ClipboardCheck,
+
+    roles: [
+      "super_admin",
+      "principal",
+      "teacher"
+    ],
+
+    children: [
+      {
+        to: "/exams",
+        label: "Exam Records",
+        icon: FileText,
+
+        roles: [
+          "super_admin",
+          "principal",
+          "teacher"
+        ],
+
+        isActive: (
+          pathname
+        ) => {
+          if (
+            pathname ===
+            "/exams"
+          ) {
+            return true;
+          }
+
+          if (
+            pathname ===
+              "/exams/new" ||
+            pathname ===
+              "/exams/deleted"
+          ) {
+            return false;
+          }
+
+          return (
+            /^\/exams\/[^/]+\/edit$/.test(
+              pathname
+            )
+          );
+        }
+      },
+
+      {
+        to: "/exams/new",
+        label: "New Exam",
+        icon: Plus,
+
+        roles: [
+          "super_admin",
+          "principal"
+        ],
+
+        end: true
+      },
+
+      {
+        to: "/exams/deleted",
+        label: "Deleted Exams",
+        icon: ArchiveRestore,
+
+        roles: [
+          "super_admin",
+          "principal"
+        ],
+
+        end: true
+      }
+    ]
+  },
 
   /*
   |--------------------------------------------------------------------------
@@ -878,6 +973,7 @@ export const Sidebar = ({
     openGroups,
     setOpenGroups
   ] = useState({
+    Examinations: false,
     Timetable: false,
     Staff: false,
     "Staff Leaves": false,
@@ -943,8 +1039,8 @@ export const Sidebar = ({
   | Automatically Open Active Group
   |--------------------------------------------------------------------------
   |
-  | Timetable، Staff، Staff Leaves یا Payroll کے کسی child route پر جانے
-  | سے متعلق submenu خود open ہو جائے گا۔
+  | Examinations، Timetable، Staff، Staff Leaves یا Payroll کے کسی child
+  | route پر جانے سے متعلق submenu خود open ہو جائے گا۔
   |
   */
 

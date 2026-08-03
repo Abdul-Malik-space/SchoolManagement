@@ -46,6 +46,16 @@ const teacherRoutes = require(
 
 /*
 |--------------------------------------------------------------------------
+| Exam and Result Management
+|--------------------------------------------------------------------------
+*/
+
+const examRoutes = require(
+  "./routes/examRoutes"
+);
+
+/*
+|--------------------------------------------------------------------------
 | Timetable Management
 |--------------------------------------------------------------------------
 */
@@ -122,6 +132,16 @@ const portalRoutes = require(
 
 const parentPortalRoutes = require(
   "./routes/parentPortalRoutes"
+);
+
+/*
+|--------------------------------------------------------------------------
+| Student Portal
+|--------------------------------------------------------------------------
+*/
+
+const studentPortalRoutes = require(
+  "./routes/studentPortalRoutes"
 );
 
 /*
@@ -493,6 +513,21 @@ app.use(
 
 /*
 |--------------------------------------------------------------------------
+| Exam and Result Management
+|--------------------------------------------------------------------------
+|
+| Exam setup، classes اور subjects assignment، workflow statuses، cloning،
+| dependency checks، soft deletion اور restoration manage کرے گا۔
+|
+*/
+
+app.use(
+  "/api/exams",
+  examRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
 | Timetable Management
 |--------------------------------------------------------------------------
 |
@@ -640,6 +675,24 @@ app.use(
 app.use(
   "/api/parent-portal",
   parentPortalRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| Student Portal
+|--------------------------------------------------------------------------
+|
+| Student dashboard، profile، digital ID، attendance، fee records، timetable،
+| subjects، academic summary، alerts اور mobile snapshot serve کرے گا۔
+|
+| تمام endpoints authenticated student account کے studentUserId اور schoolId
+| کے مطابق secure scope میں چلیں گے۔
+|
+*/
+
+app.use(
+  "/api/student-portal",
+  studentPortalRoutes
 );
 
 /*

@@ -220,11 +220,47 @@ import DeletedAuditLogsList from "./pages/audit-logs/DeletedAuditLogsList";
 
 /*
 |--------------------------------------------------------------------------
+| Exam and Result Management
+|--------------------------------------------------------------------------
+*/
+
+import ExamList from "./pages/exams/ExamList";
+
+import ExamForm from "./pages/exams/ExamForm";
+
+import DeletedExams from "./pages/exams/DeletedExams";
+
+/*
+|--------------------------------------------------------------------------
 | Principal Portal Messages
 |--------------------------------------------------------------------------
 */
 
 import PrincipalMessages from "./pages/portal/PrincipalMessages";
+
+/*
+|--------------------------------------------------------------------------
+| Student Portal
+|--------------------------------------------------------------------------
+*/
+
+import StudentPortalLayout from "./pages/studentPortal/StudentPortalLayout";
+
+import StudentPortalDashboard from "./pages/studentPortal/StudentPortalDashboard";
+
+import StudentProfile from "./pages/studentPortal/StudentProfile";
+
+import StudentAttendance from "./pages/studentPortal/StudentAttendance";
+
+import StudentTimetable from "./pages/studentPortal/StudentTimetable";
+
+import StudentSubjects from "./pages/studentPortal/StudentSubjects";
+
+import StudentAcademics from "./pages/studentPortal/StudentAcademics";
+
+import StudentFees from "./pages/studentPortal/StudentFees";
+
+import StudentMessages from "./pages/studentPortal/StudentMessages";
 
 /*
 |--------------------------------------------------------------------------
@@ -271,12 +307,17 @@ const PARENT_PORTAL_ROLES = [
   "parent"
 ];
 
+const STUDENT_PORTAL_ROLES = [
+  "student"
+];
+
 const ROLE_HOME_PATHS = {
   super_admin: "/dashboard/home",
   principal: "/dashboard/home",
   teacher: "/dashboard/home",
   accountant: "/dashboard/home",
-  parent: "/parent-portal"
+  parent: "/parent-portal",
+  student: "/student-portal"
 };
 
 const SUPER_ADMIN_ONLY = [
@@ -527,6 +568,30 @@ const AUDIT_LOG_ROLES = [
 
 /*
 |--------------------------------------------------------------------------
+| Exam Management Roles
+|--------------------------------------------------------------------------
+|
+| Exam list and details:
+| Super Admin، Principal اور Teacher
+|
+| Create، edit، deleted records، restore اور workflow management:
+| صرف Super Admin اور Principal
+|
+*/
+
+const EXAM_VIEW_ROLES = [
+  "super_admin",
+  "principal",
+  "teacher"
+];
+
+const EXAM_MANAGEMENT_ROLES = [
+  "super_admin",
+  "principal"
+];
+
+/*
+|--------------------------------------------------------------------------
 | Principal Messaging Roles
 |--------------------------------------------------------------------------
 */
@@ -542,7 +607,7 @@ const PRINCIPAL_MESSAGE_ROLES = [
 |--------------------------------------------------------------------------
 |
 | ہر authenticated user کو اس کے متعلقہ portal پر بھیجتا ہے۔
-| Parent کو Parent Portal اور dashboard staff کو Dashboard Home ملتا ہے۔
+| Parent کو Parent Portal، Student کو Student Portal اور staff کو Dashboard Home ملتا ہے۔
 |
 */
 
@@ -1290,6 +1355,54 @@ function App() {
 
         {/*
         |--------------------------------------------------------------------------
+        | Exam and Result Management
+        |--------------------------------------------------------------------------
+        |
+        | Exam list:
+        | Super Admin، Principal اور Teacher
+        |
+        | Create، edit اور deleted recovery:
+        | صرف Super Admin اور Principal
+        |
+        | Static /new اور /deleted routes کو dynamic /:id/edit route سے پہلے
+        | رکھا گیا ہے۔
+        |
+        */}
+
+        <Route
+          path="/exams"
+          element={protectElement(
+            EXAM_VIEW_ROLES,
+            <ExamList />
+          )}
+        />
+
+        <Route
+          path="/exams/new"
+          element={protectElement(
+            EXAM_MANAGEMENT_ROLES,
+            <ExamForm />
+          )}
+        />
+
+        <Route
+          path="/exams/deleted"
+          element={protectElement(
+            EXAM_MANAGEMENT_ROLES,
+            <DeletedExams />
+          )}
+        />
+
+        <Route
+          path="/exams/:id/edit"
+          element={protectElement(
+            EXAM_MANAGEMENT_ROLES,
+            <ExamForm />
+          )}
+        />
+
+        {/*
+        |--------------------------------------------------------------------------
         | Principal Portal Messages
         |--------------------------------------------------------------------------
         |
@@ -1334,6 +1447,79 @@ function App() {
             AUDIT_LOG_ROLES,
             <AuditLogDetails />
           )}
+        />
+      </Route>
+
+
+      {/*
+      |--------------------------------------------------------------------------
+      | Student Portal
+      |--------------------------------------------------------------------------
+      |
+      | Student Portal staff DashboardLayout اور Parent Portal سے الگ رکھا گیا
+      | ہے۔ Student صرف اپنا profile، attendance، timetable، subjects، academic
+      | progress، fees اور principal messages دیکھ سکتا ہے۔
+      |
+      */}
+
+      <Route
+        path="/student-portal"
+        element={
+          <ProtectedRoute roles={STUDENT_PORTAL_ROLES}>
+            <PasswordChangeGuard>
+              <StudentPortalLayout />
+            </PasswordChangeGuard>
+          </ProtectedRoute>
+        }
+      >
+        <Route
+          index
+          element={<StudentPortalDashboard />}
+        />
+
+        <Route
+          path="profile"
+          element={<StudentProfile />}
+        />
+
+        <Route
+          path="attendance"
+          element={<StudentAttendance />}
+        />
+
+        <Route
+          path="timetable"
+          element={<StudentTimetable />}
+        />
+
+        <Route
+          path="subjects"
+          element={<StudentSubjects />}
+        />
+
+        <Route
+          path="academics"
+          element={<StudentAcademics />}
+        />
+
+        <Route
+          path="fees"
+          element={<StudentFees />}
+        />
+
+        <Route
+          path="messages"
+          element={<StudentMessages />}
+        />
+
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to="/student-portal"
+              replace
+            />
+          }
         />
       </Route>
 
