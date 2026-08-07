@@ -513,8 +513,76 @@ exports.getStudentAttendance = async (req, res) => {
       filter.sectionName = req.query.sectionName.trim();
     }
 
-    if (req.query.date) {
-      const selectedDate = normalizeDate(req.query.date);
+    /*
+    |--------------------------------------------------------------------------
+    | Attendance Date Scope
+    |--------------------------------------------------------------------------
+    |
+    | Supported report/query modes:
+    |
+    | Daily:
+    |   ?date=2026-08-07
+    |
+    | Weekly / custom range:
+    |   ?from=2026-08-03&to=2026-08-09
+    |
+    | Monthly:
+    |   ?month=2026-08
+    |
+    | Only one date mode can be used in the same request. Class and section
+    | filters can be combined with any of these modes.
+    |
+    */
+
+    const hasSingleDate =
+      Boolean(
+        req.query.date
+      );
+
+    const hasMonth =
+      Boolean(
+        req.query.month
+      );
+
+    const hasFrom =
+      Boolean(
+        req.query.from
+      );
+
+    const hasTo =
+      Boolean(
+        req.query.to
+      );
+
+    const hasDateRange =
+      hasFrom ||
+      hasTo;
+
+    const selectedDateModes =
+      [
+        hasSingleDate,
+        hasMonth,
+        hasDateRange
+      ].filter(
+        Boolean
+      ).length;
+
+    if (
+      selectedDateModes >
+      1
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Use only one attendance date filter: date, month, or from/to range"
+      });
+    }
+
+    if (hasSingleDate) {
+      const selectedDate =
+        normalizeDate(
+          req.query.date
+        );
 
       if (!selectedDate) {
         return res.status(400).json({
@@ -523,24 +591,131 @@ exports.getStudentAttendance = async (req, res) => {
         });
       }
 
-      filter.attendanceDate = selectedDate;
+      filter.attendanceDate =
+        selectedDate;
     }
 
-    if (req.query.month) {
-      if (!isValidMonth(req.query.month)) {
+    if (hasMonth) {
+      if (
+        !isValidMonth(
+          req.query.month
+        )
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Invalid month format. Use YYYY-MM"
+          message:
+            "Invalid month format. Use YYYY-MM"
         });
       }
 
-      const [year, month] = req.query.month.split("-").map(Number);
-      const startDate = new Date(Date.UTC(year, month - 1, 1));
-      const endDate = new Date(Date.UTC(year, month, 1));
+      const [
+        year,
+        month
+      ] =
+        req.query.month
+          .split("-")
+          .map(Number);
+
+      const startDate =
+        new Date(
+          Date.UTC(
+            year,
+            month - 1,
+            1
+          )
+        );
+
+      const endDate =
+        new Date(
+          Date.UTC(
+            year,
+            month,
+            1
+          )
+        );
 
       filter.attendanceDate = {
         $gte: startDate,
         $lt: endDate
+      };
+    }
+
+    if (hasDateRange) {
+      if (
+        !hasFrom ||
+        !hasTo
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Both from and to dates are required for an attendance date range"
+        });
+      }
+
+      const fromDate =
+        normalizeDate(
+          req.query.from
+        );
+
+      const toDate =
+        normalizeDate(
+          req.query.to
+        );
+
+      if (
+        !fromDate ||
+        !toDate
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Invalid attendance date range. Use YYYY-MM-DD for from and to"
+        });
+      }
+
+      if (
+        fromDate.getTime() >
+        toDate.getTime()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Attendance range start date cannot be after the end date"
+        });
+      }
+
+      const maximumRangeDays =
+        366;
+
+      const rangeDays =
+        Math.floor(
+          (
+            toDate.getTime() -
+            fromDate.getTime()
+          ) /
+            (
+              24 *
+              60 *
+              60 *
+              1000
+            )
+        ) +
+        1;
+
+      if (
+        rangeDays >
+        maximumRangeDays
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            `Attendance date range cannot exceed ${maximumRangeDays} days`
+        });
+      }
+
+      filter.attendanceDate = {
+        $gte: fromDate,
+        $lte: toDate
       };
     }
 

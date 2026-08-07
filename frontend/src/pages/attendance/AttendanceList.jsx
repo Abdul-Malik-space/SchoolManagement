@@ -5,15 +5,18 @@ import {
 } from "react";
 
 import {
+  BarChart3,
   Building2,
   CalendarCheck,
   CalendarDays,
   CheckCircle2,
   Clock3,
+  FileSpreadsheet,
   GraduationCap,
   ListChecks,
   Loader2,
   Pencil,
+  Printer,
   RefreshCw,
   Save,
   Trash2,
@@ -154,6 +157,125 @@ const buildSummary = (records = []) => {
   );
 };
 
+const getCurrentWeekValue = () => {
+  const date = new Date();
+  const target = new Date(
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    )
+  );
+
+  const dayNumber = target.getUTCDay() || 7;
+  target.setUTCDate(
+    target.getUTCDate() + 4 - dayNumber
+  );
+
+  const yearStart = new Date(
+    Date.UTC(target.getUTCFullYear(), 0, 1)
+  );
+
+  const weekNumber = Math.ceil(
+    (((target - yearStart) / 86400000) + 1) / 7
+  );
+
+  return `${target.getUTCFullYear()}-W${String(
+    weekNumber
+  ).padStart(2, "0")}`;
+};
+
+const getWeekRange = (weekValue) => {
+  const match = /^(\d{4})-W(\d{2})$/.exec(
+    String(weekValue || "")
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const week = Number(match[2]);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(week) ||
+    week < 1 ||
+    week > 53
+  ) {
+    return null;
+  }
+
+  const januaryFourth = new Date(
+    Date.UTC(year, 0, 4)
+  );
+
+  const januaryFourthDay =
+    januaryFourth.getUTCDay() || 7;
+
+  const monday = new Date(januaryFourth);
+  monday.setUTCDate(
+    januaryFourth.getUTCDate() -
+      januaryFourthDay +
+      1 +
+      (week - 1) * 7
+  );
+
+  const sunday = new Date(monday);
+  sunday.setUTCDate(
+    monday.getUTCDate() + 6
+  );
+
+  return {
+    from: monday.toISOString().slice(0, 10),
+    to: sunday.toISOString().slice(0, 10)
+  };
+};
+
+const getAttendanceDateKey = (value) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+};
+
+const statusShortLabels = {
+  present: "P",
+  absent: "A",
+  late: "Lt",
+  leave: "Lv"
+};
+
+const statusFullLabels = {
+  present: "Present",
+  absent: "Absent",
+  late: "Late",
+  leave: "Leave"
+};
+
+const escapeHtml = (value) => {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+const sanitizeFileName = (value) => {
+  return String(value || "attendance-report")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "") || "attendance-report";
+};
+
 const SummaryCard = ({
   icon: Icon,
   label,
@@ -237,6 +359,9 @@ const AttendanceList = () => {
   const [historyClasses, setHistoryClasses] =
     useState([]);
 
+  const [reportClasses, setReportClasses] =
+    useState([]);
+
   const [markFilters, setMarkFilters] = useState({
     schoolId: "",
     classId: "",
@@ -253,6 +378,26 @@ const AttendanceList = () => {
       page: 1,
       limit: 10
     });
+
+  const [reportFilters, setReportFilters] =
+    useState({
+      schoolId: "",
+      classId: "",
+      sectionName: "",
+      periodType: "daily",
+      date: getLocalDateValue(),
+      week: getCurrentWeekValue(),
+      month: getCurrentMonth()
+    });
+
+  const [reportAttendance, setReportAttendance] =
+    useState([]);
+
+  const [reportLoading, setReportLoading] =
+    useState(false);
+
+  const [generatedReport, setGeneratedReport] =
+    useState(null);
 
   const [students, setStudents] = useState([]);
   const [records, setRecords] = useState({});
@@ -303,6 +448,10 @@ const AttendanceList = () => {
     ? historyFilters.schoolId
     : currentSchoolId;
 
+  const effectiveReportSchoolId = isSuperAdmin
+    ? reportFilters.schoolId
+    : currentSchoolId;
+
   const selectedMarkClass = useMemo(() => {
     return markClasses.find(
       (classItem) =>
@@ -322,6 +471,180 @@ const AttendanceList = () => {
 
   const historySections =
     selectedHistoryClass?.sections || [];
+
+  const selectedReportClass = useMemo(() => {
+    return reportClasses.find(
+      (classItem) =>
+        classItem._id === reportFilters.classId
+    );
+  }, [reportClasses, reportFilters.classId]);
+
+  const reportSections =
+    selectedReportClass?.sections || [];
+
+  const reportData = useMemo(() => {
+    const attendanceByDate = new Map();
+    const studentMap = new Map();
+
+    const orderedAttendance = [
+      ...reportAttendance
+    ].sort((a, b) => {
+      return new Date(a.attendanceDate) -
+        new Date(b.attendanceDate);
+    });
+
+    orderedAttendance.forEach((attendance) => {
+      const dateKey = getAttendanceDateKey(
+        attendance.attendanceDate
+      );
+
+      if (!dateKey) {
+        return;
+      }
+
+      attendanceByDate.set(
+        dateKey,
+        attendance
+      );
+
+      (attendance.records || []).forEach(
+        (record) => {
+          const student = record.studentId;
+          const studentId =
+            student?._id ||
+            student;
+
+          if (!studentId) {
+            return;
+          }
+
+          if (!studentMap.has(studentId)) {
+            studentMap.set(studentId, {
+              studentId,
+              name: getStudentName(student),
+              fatherName:
+                student?.fatherName || "",
+              admissionNumber:
+                student?.admissionNumber || "",
+              present: 0,
+              absent: 0,
+              late: 0,
+              leave: 0,
+              statusByDate: {},
+              remarksByDate: {}
+            });
+          }
+
+          const row = studentMap.get(studentId);
+          const status = record.status;
+
+          if (
+            Object.prototype.hasOwnProperty.call(
+              statusTones,
+              status
+            )
+          ) {
+            row[status] += 1;
+          }
+
+          row.statusByDate[dateKey] = status;
+          row.remarksByDate[dateKey] =
+            record.remarks || "";
+        }
+      );
+    });
+
+    const dates = Array.from(
+      attendanceByDate.keys()
+    ).sort();
+
+    const students = Array.from(
+      studentMap.values()
+    )
+      .map((row) => {
+        const attendanceDays =
+          row.present +
+          row.absent +
+          row.late;
+
+        const attendedDays =
+          row.present +
+          row.late;
+
+        return {
+          ...row,
+          markedDays:
+            attendanceDays +
+            row.leave,
+          attendancePercentage:
+            attendanceDays > 0
+              ? Number(
+                  (
+                    (attendedDays /
+                      attendanceDays) *
+                    100
+                  ).toFixed(1)
+                )
+              : 0
+        };
+      })
+      .sort((a, b) => {
+        const admissionCompare =
+          String(a.admissionNumber).localeCompare(
+            String(b.admissionNumber),
+            undefined,
+            {
+              numeric: true,
+              sensitivity: "base"
+            }
+          );
+
+        if (admissionCompare !== 0) {
+          return admissionCompare;
+        }
+
+        return a.name.localeCompare(b.name);
+      });
+
+    const totals = students.reduce(
+      (summary, row) => {
+        summary.present += row.present;
+        summary.absent += row.absent;
+        summary.late += row.late;
+        summary.leave += row.leave;
+        return summary;
+      },
+      {
+        present: 0,
+        absent: 0,
+        late: 0,
+        leave: 0
+      }
+    );
+
+    const denominator =
+      totals.present +
+      totals.absent +
+      totals.late;
+
+    return {
+      dates,
+      students,
+      totals,
+      workingDays: dates.length,
+      studentCount: students.length,
+      attendancePercentage:
+        denominator > 0
+          ? Number(
+              (
+                ((totals.present + totals.late) /
+                  denominator) *
+                100
+              ).toFixed(1)
+            )
+          : 0
+    };
+  }, [reportAttendance]);
 
   const recordList = useMemo(() => {
     return students.map((student) => ({
@@ -448,6 +771,44 @@ const AttendanceList = () => {
     };
   }, [effectiveHistorySchoolId, isSuperAdmin]);
 
+  useEffect(() => {
+    if (!effectiveReportSchoolId) {
+      setReportClasses([]);
+      return;
+    }
+
+    let active = true;
+
+    const loadClasses = async () => {
+      try {
+        const params = isSuperAdmin
+          ? {
+              schoolId: effectiveReportSchoolId,
+              isActive: true
+            }
+          : {
+              isActive: true
+            };
+
+        const { data } = await getClasses(params);
+
+        if (active) {
+          setReportClasses(data?.classes || []);
+        }
+      } catch {
+        if (active) {
+          setReportClasses([]);
+        }
+      }
+    };
+
+    loadClasses();
+
+    return () => {
+      active = false;
+    };
+  }, [effectiveReportSchoolId, isSuperAdmin]);
+
   const clearRoster = () => {
     setStudents([]);
     setRecords({});
@@ -505,6 +866,327 @@ const AttendanceList = () => {
         return next;
       });
     };
+  };
+
+  const updateReportFilter = (key) => {
+    return (event) => {
+      const value = event.target.value;
+
+      setReportFilters((current) => {
+        const next = {
+          ...current,
+          [key]: value
+        };
+
+        if (key === "schoolId") {
+          next.classId = "";
+          next.sectionName = "";
+        }
+
+        if (key === "classId") {
+          next.sectionName = "";
+        }
+
+        return next;
+      });
+
+      setReportAttendance([]);
+      setGeneratedReport(null);
+      setError("");
+    };
+  };
+
+  const getSelectedReportSchoolName = () => {
+    if (isSuperAdmin) {
+      return (
+        schools.find(
+          (school) =>
+            school._id === reportFilters.schoolId
+        )?.schoolName ||
+        "Selected School"
+      );
+    }
+
+    return (
+      currentUser?.schoolId?.schoolName ||
+      "School"
+    );
+  };
+
+  const buildReportRequest = () => {
+    if (!effectiveReportSchoolId) {
+      return {
+        error: "Please select a school."
+      };
+    }
+
+    if (!reportFilters.classId) {
+      return {
+        error: "Please select a class for the report."
+      };
+    }
+
+    if (!reportFilters.sectionName) {
+      return {
+        error: "Please select a section for the report."
+      };
+    }
+
+    const params = {
+      classId: reportFilters.classId,
+      sectionName: reportFilters.sectionName,
+      page: 1,
+      limit: 100
+    };
+
+    if (isSuperAdmin) {
+      params.schoolId = effectiveReportSchoolId;
+    }
+
+    let periodLabel = "";
+    let from = "";
+    let to = "";
+
+    if (reportFilters.periodType === "daily") {
+      if (!reportFilters.date) {
+        return {
+          error: "Please select a report date."
+        };
+      }
+
+      params.date = reportFilters.date;
+      from = reportFilters.date;
+      to = reportFilters.date;
+      periodLabel = formatDate(reportFilters.date);
+    }
+
+    if (reportFilters.periodType === "weekly") {
+      const range = getWeekRange(
+        reportFilters.week
+      );
+
+      if (!range) {
+        return {
+          error: "Please select a valid week."
+        };
+      }
+
+      params.from = range.from;
+      params.to = range.to;
+      from = range.from;
+      to = range.to;
+      periodLabel = `${formatDate(range.from)} - ${formatDate(range.to)}`;
+    }
+
+    if (reportFilters.periodType === "monthly") {
+      if (!reportFilters.month) {
+        return {
+          error: "Please select a report month."
+        };
+      }
+
+      params.month = reportFilters.month;
+
+      const [year, month] = reportFilters.month
+        .split("-")
+        .map(Number);
+
+      const monthDate = new Date(
+        Date.UTC(year, month - 1, 1)
+      );
+
+      periodLabel = new Intl.DateTimeFormat(
+        "en-PK",
+        {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC"
+        }
+      ).format(monthDate);
+
+      from = `${reportFilters.month}-01`;
+      to = new Date(
+        Date.UTC(year, month, 0)
+      )
+        .toISOString()
+        .slice(0, 10);
+    }
+
+    return {
+      params,
+      meta: {
+        schoolId: effectiveReportSchoolId,
+        schoolName: getSelectedReportSchoolName(),
+        classId: reportFilters.classId,
+        className:
+          selectedReportClass?.className ||
+          "Class",
+        sectionName: reportFilters.sectionName,
+        periodType: reportFilters.periodType,
+        periodLabel,
+        from,
+        to,
+        generatedAt: new Date().toISOString()
+      }
+    };
+  };
+
+  const fetchAttendanceReport = async () => {
+    const request = buildReportRequest();
+
+    if (request.error) {
+      setError(request.error);
+      return;
+    }
+
+    setReportLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { data } = await getStudentAttendance(
+        request.params
+      );
+
+      const attendance = data?.attendance || [];
+
+      setReportAttendance(attendance);
+      setGeneratedReport({
+        ...request.meta,
+        schoolName:
+          attendance[0]?.schoolId?.schoolName ||
+          request.meta.schoolName
+      });
+    } catch (requestError) {
+      setReportAttendance([]);
+      setGeneratedReport(null);
+
+      setError(
+        requestError.response?.data?.message ||
+          "Attendance report could not be generated."
+      );
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handlePrintReport = () => {
+    if (!generatedReport) {
+      return;
+    }
+
+    window.print();
+  };
+
+  const handleExcelExport = () => {
+    if (
+      !generatedReport ||
+      reportData.students.length === 0
+    ) {
+      return;
+    }
+
+    const dateHeaders = reportData.dates
+      .map(
+        (date) =>
+          `<th>${escapeHtml(formatDate(date))}</th>`
+      )
+      .join("");
+
+    const studentRows = reportData.students
+      .map((student, index) => {
+        const dailyCells = reportData.dates
+          .map((date) => {
+            const status =
+              student.statusByDate[date];
+
+            return `<td>${escapeHtml(
+              status
+                ? statusFullLabels[status] || status
+                : "Not Marked"
+            )}</td>`;
+          })
+          .join("");
+
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(student.admissionNumber)}</td>
+            <td>${escapeHtml(student.name)}</td>
+            <td>${escapeHtml(student.fatherName)}</td>
+            ${dailyCells}
+            <td>${student.present}</td>
+            <td>${student.absent}</td>
+            <td>${student.late}</td>
+            <td>${student.leave}</td>
+            <td>${student.attendancePercentage}%</td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const reportHtml = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <style>
+            table { border-collapse: collapse; font-family: Arial, sans-serif; }
+            th, td { border: 1px solid #9ca3af; padding: 6px 8px; white-space: nowrap; }
+            th { background: #e5e7eb; font-weight: 700; }
+            .title { font-size: 18px; font-weight: 700; }
+            .meta td { border: 0; padding: 3px 8px; }
+          </style>
+        </head>
+        <body>
+          <table class="meta">
+            <tr><td class="title" colspan="4">Student Attendance Report</td></tr>
+            <tr><td>School</td><td>${escapeHtml(generatedReport.schoolName)}</td><td>Period</td><td>${escapeHtml(generatedReport.periodLabel)}</td></tr>
+            <tr><td>Class</td><td>${escapeHtml(generatedReport.className)}</td><td>Section</td><td>${escapeHtml(generatedReport.sectionName)}</td></tr>
+            <tr><td>Students</td><td>${reportData.studentCount}</td><td>Working Days</td><td>${reportData.workingDays}</td></tr>
+            <tr><td>Overall Attendance</td><td>${reportData.attendancePercentage}%</td><td>Generated</td><td>${escapeHtml(formatDate(generatedReport.generatedAt))}</td></tr>
+          </table>
+          <br />
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Admission No.</th>
+                <th>Student</th>
+                <th>Father Name</th>
+                ${dateHeaders}
+                <th>Present</th>
+                <th>Absent</th>
+                <th>Late</th>
+                <th>Leave</th>
+                <th>Attendance %</th>
+              </tr>
+            </thead>
+            <tbody>${studentRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob(
+      ["\uFEFF", reportHtml],
+      {
+        type: "application/vnd.ms-excel;charset=utf-8"
+      }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+
+    anchor.href = url;
+    anchor.download = `${sanitizeFileName(
+      `attendance-${generatedReport.className}-${generatedReport.sectionName}-${generatedReport.periodType}-${generatedReport.from}-${generatedReport.to}`
+    )}.xls`;
+
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
   };
 
   const fetchAllStudents = async ({
@@ -930,6 +1612,18 @@ const AttendanceList = () => {
             >
               History
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab("reports")}
+              className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                activeTab === "reports"
+                  ? "bg-brand-600 text-white"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              Reports
+            </button>
           </div>
         }
       />
@@ -1334,7 +2028,7 @@ const AttendanceList = () => {
             </>
           )}
         </div>
-      ) : (
+      ) : activeTab === "history" ? (
         <section className="card overflow-hidden">
           <div className="border-b border-slate-100 p-4 sm:p-5">
             <div
@@ -1740,6 +2434,470 @@ const AttendanceList = () => {
             </>
           )}
         </section>
+      ) : (
+        <div className="space-y-5">
+          <style>
+            {`
+              @media print {
+                body * {
+                  visibility: hidden !important;
+                }
+
+                #attendance-report-print,
+                #attendance-report-print * {
+                  visibility: visible !important;
+                }
+
+                #attendance-report-print {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  border: 0 !important;
+                  box-shadow: none !important;
+                }
+
+                #attendance-report-actions {
+                  display: none !important;
+                }
+
+                #attendance-report-print table {
+                  font-size: 9px !important;
+                }
+
+                #attendance-report-print th,
+                #attendance-report-print td {
+                  padding: 4px !important;
+                }
+
+                @page {
+                  size: A4 landscape;
+                  margin: 8mm;
+                }
+              }
+            `}
+          </style>
+
+          <section className="card p-4 sm:p-5">
+            <div className="mb-4">
+              <div className="flex items-center gap-2">
+                <BarChart3
+                  size={18}
+                  className="text-brand-600"
+                />
+
+                <h2 className="font-bold text-slate-800">
+                  Attendance Reports
+                </h2>
+              </div>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Generate a separate daily, weekly or monthly report for each class and section.
+              </p>
+            </div>
+
+            <div className="mb-4 inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+              {[
+                ["daily", "Daily"],
+                ["weekly", "Weekly"],
+                ["monthly", "Monthly"]
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setReportFilters((current) => ({
+                      ...current,
+                      periodType: value
+                    }));
+                    setReportAttendance([]);
+                    setGeneratedReport(null);
+                    setError("");
+                  }}
+                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+                    reportFilters.periodType === value
+                      ? "bg-white text-brand-700 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div
+              className={`grid gap-3 md:grid-cols-2 ${
+                isSuperAdmin
+                  ? "xl:grid-cols-[repeat(5,minmax(150px,1fr))_auto]"
+                  : "xl:grid-cols-[repeat(4,minmax(170px,1fr))_auto]"
+              }`}
+            >
+              {isSuperAdmin && (
+                <select
+                  className="field-select"
+                  value={reportFilters.schoolId}
+                  onChange={updateReportFilter("schoolId")}
+                >
+                  <option value="">
+                    Select school
+                  </option>
+
+                  {schools.map((school) => (
+                    <option
+                      key={school._id}
+                      value={school._id}
+                    >
+                      {school.schoolName}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <select
+                className="field-select"
+                value={reportFilters.classId}
+                disabled={!effectiveReportSchoolId}
+                onChange={updateReportFilter("classId")}
+              >
+                <option value="">
+                  Select class
+                </option>
+
+                {reportClasses.map((classItem) => (
+                  <option
+                    key={classItem._id}
+                    value={classItem._id}
+                  >
+                    {classItem.className}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="field-select"
+                value={reportFilters.sectionName}
+                disabled={!reportFilters.classId}
+                onChange={updateReportFilter("sectionName")}
+              >
+                <option value="">
+                  Select section
+                </option>
+
+                {reportSections.map((section) => (
+                  <option
+                    key={section._id}
+                    value={section.sectionName}
+                  >
+                    {section.sectionName}
+                  </option>
+                ))}
+              </select>
+
+              {reportFilters.periodType === "daily" && (
+                <input
+                  type="date"
+                  className="field-input"
+                  value={reportFilters.date}
+                  onChange={updateReportFilter("date")}
+                  max={getLocalDateValue()}
+                />
+              )}
+
+              {reportFilters.periodType === "weekly" && (
+                <input
+                  type="week"
+                  className="field-input"
+                  value={reportFilters.week}
+                  onChange={updateReportFilter("week")}
+                />
+              )}
+
+              {reportFilters.periodType === "monthly" && (
+                <input
+                  type="month"
+                  className="field-input"
+                  value={reportFilters.month}
+                  onChange={updateReportFilter("month")}
+                  max={getCurrentMonth()}
+                />
+              )}
+
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={reportLoading}
+                onClick={fetchAttendanceReport}
+              >
+                {reportLoading ? (
+                  <Loader2
+                    size={16}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <BarChart3 size={16} />
+                )}
+
+                {reportLoading
+                  ? "Generating..."
+                  : "Generate Report"}
+              </button>
+            </div>
+          </section>
+
+          {reportLoading ? (
+            <section className="card flex min-h-64 items-center justify-center text-sm text-slate-400">
+              <Loader2
+                size={22}
+                className="mr-2 animate-spin"
+              />
+              Preparing attendance report...
+            </section>
+          ) : generatedReport ? (
+            <section
+              id="attendance-report-print"
+              className="card overflow-hidden"
+            >
+              <div className="border-b border-slate-100 p-4 sm:p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-600">
+                      Student Attendance Report
+                    </p>
+
+                    <h2 className="mt-2 text-xl font-bold text-slate-900">
+                      {generatedReport.schoolName}
+                    </h2>
+
+                    <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-slate-500">
+                      <span>
+                        <strong className="text-slate-700">Class:</strong>{" "}
+                        {generatedReport.className}
+                      </span>
+
+                      <span>
+                        <strong className="text-slate-700">Section:</strong>{" "}
+                        {generatedReport.sectionName}
+                      </span>
+
+                      <span>
+                        <strong className="text-slate-700">Period:</strong>{" "}
+                        {generatedReport.periodLabel}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div
+                    id="attendance-report-actions"
+                    className="flex flex-wrap gap-2"
+                  >
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={reportData.students.length === 0}
+                      onClick={handlePrintReport}
+                    >
+                      <Printer size={16} />
+                      Print
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={reportData.students.length === 0}
+                      onClick={handleExcelExport}
+                    >
+                      <FileSpreadsheet size={16} />
+                      Excel
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {reportData.students.length === 0 ? (
+                <div className="flex min-h-64 flex-col items-center justify-center p-6 text-center">
+                  <CalendarCheck
+                    size={34}
+                    className="text-slate-300"
+                  />
+
+                  <p className="mt-3 font-semibold text-slate-700">
+                    No attendance found for this report
+                  </p>
+
+                  <p className="mt-1 max-w-md text-sm text-slate-500">
+                    Attendance must be marked for the selected class, section and period before a report can be printed or exported.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-3 border-b border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2 lg:grid-cols-5 sm:p-5">
+                    <SummaryCard
+                      icon={Users}
+                      label="Students"
+                      value={reportData.studentCount}
+                    />
+
+                    <SummaryCard
+                      icon={CalendarDays}
+                      label="Working Days"
+                      value={reportData.workingDays}
+                    />
+
+                    <SummaryCard
+                      icon={CheckCircle2}
+                      label="Present Marks"
+                      value={reportData.totals.present}
+                    />
+
+                    <SummaryCard
+                      icon={XCircle}
+                      label="Absent Marks"
+                      value={reportData.totals.absent}
+                    />
+
+                    <SummaryCard
+                      icon={BarChart3}
+                      label="Attendance %"
+                      value={`${reportData.attendancePercentage}%`}
+                    />
+                  </div>
+
+                  <div className="border-b border-slate-100 px-4 py-3 text-xs text-slate-500 sm:px-5">
+                    <span className="font-semibold text-slate-700">Status key:</span>{" "}
+                    P = Present · A = Absent · Lt = Late · Lv = Leave · — = Not marked. Attendance percentage counts Present and Late as attended; Leave is excluded from the percentage denominator.
+                  </div>
+
+                  <div className="overflow-x-auto p-4 sm:p-5">
+                    <table className="min-w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          <th className="sticky left-0 z-10 min-w-10 border border-slate-200 bg-slate-50 px-2 py-2 font-semibold text-slate-600">
+                            #
+                          </th>
+                          <th className="min-w-28 border border-slate-200 px-2 py-2 font-semibold text-slate-600">
+                            Admission No.
+                          </th>
+                          <th className="min-w-44 border border-slate-200 px-2 py-2 font-semibold text-slate-600">
+                            Student
+                          </th>
+
+                          {reportData.dates.map((date) => (
+                            <th
+                              key={date}
+                              className="min-w-20 border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600"
+                            >
+                              {formatDate(date)}
+                            </th>
+                          ))}
+
+                          <th className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600">
+                            P
+                          </th>
+                          <th className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600">
+                            A
+                          </th>
+                          <th className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600">
+                            Lt
+                          </th>
+                          <th className="border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600">
+                            Lv
+                          </th>
+                          <th className="min-w-20 border border-slate-200 px-2 py-2 text-center font-semibold text-slate-600">
+                            %
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {reportData.students.map((student, index) => (
+                          <tr
+                            key={student.studentId}
+                            className="hover:bg-slate-50/60"
+                          >
+                            <td className="border border-slate-200 px-2 py-2 text-slate-500">
+                              {index + 1}
+                            </td>
+
+                            <td className="border border-slate-200 px-2 py-2 font-semibold text-slate-600">
+                              {student.admissionNumber || "-"}
+                            </td>
+
+                            <td className="border border-slate-200 px-2 py-2">
+                              <p className="font-semibold text-slate-800">
+                                {student.name}
+                              </p>
+                              <p className="mt-0.5 text-[11px] text-slate-400">
+                                {student.fatherName || "No father name"}
+                              </p>
+                            </td>
+
+                            {reportData.dates.map((date) => {
+                              const status =
+                                student.statusByDate[date];
+
+                              return (
+                                <td
+                                  key={date}
+                                  title={
+                                    student.remarksByDate[date] ||
+                                    statusFullLabels[status] ||
+                                    "Not marked"
+                                  }
+                                  className="border border-slate-200 px-2 py-2 text-center font-semibold"
+                                >
+                                  {status
+                                    ? statusShortLabels[status] || status
+                                    : "—"}
+                                </td>
+                              );
+                            })}
+
+                            <td className="border border-slate-200 px-2 py-2 text-center text-emerald-700">
+                              {student.present}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-2 text-center text-rose-700">
+                              {student.absent}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-2 text-center text-amber-700">
+                              {student.late}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-2 text-center text-sky-700">
+                              {student.leave}
+                            </td>
+                            <td className="border border-slate-200 px-2 py-2 text-center font-bold text-slate-800">
+                              {student.attendancePercentage}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400 sm:px-5">
+                    Generated on {formatDate(generatedReport.generatedAt)}. Report includes only attendance records saved in the system for the selected class and section.
+                  </div>
+                </>
+              )}
+            </section>
+          ) : (
+            <section className="card flex min-h-64 flex-col items-center justify-center p-6 text-center">
+              <BarChart3
+                size={36}
+                className="text-slate-300"
+              />
+
+              <p className="mt-3 font-semibold text-slate-700">
+                Select a class, section and report period
+              </p>
+
+              <p className="mt-1 max-w-lg text-sm text-slate-500">
+                Daily, weekly and monthly reports can be generated separately for every section and then printed or downloaded in an Excel-compatible format.
+              </p>
+            </section>
+          )}
+        </div>
       )}
 
       <Modal
