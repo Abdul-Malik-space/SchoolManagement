@@ -54,6 +54,18 @@ const examRoutes = require(
   "./routes/examRoutes"
 );
 
+const studentMarkRoutes = require(
+  "./routes/studentMarkRoutes"
+);
+
+const examResultRoutes = require(
+  "./routes/examResultRoutes"
+);
+
+const reportCardRoutes = require(
+  "./routes/reportCardRoutes"
+);
+
 /*
 |--------------------------------------------------------------------------
 | Timetable Management
@@ -524,6 +536,53 @@ app.use(
 app.use(
   "/api/exams",
   examRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| Exam Marks Entry and Review
+|--------------------------------------------------------------------------
+|
+| Teacher marks-entry workspaces، mark sheets، draft saving اور submission
+| manage کرے گا۔ Principal / Super Admin submitted marks کو review، return
+| اور approve کر سکیں گے۔
+|
+*/
+
+app.use(
+  "/api/exam-marks",
+  studentMarkRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| Consolidated Exam Results
+|--------------------------------------------------------------------------
+|
+| Principal / Super Admin approved marks سے student-wise consolidated
+| results generate، recalculate، rank، approve اور publish کر سکیں گے۔
+|
+*/
+
+app.use(
+  "/api/exam-results",
+  examResultRoutes
+);
+
+/*
+|--------------------------------------------------------------------------
+| Report Card Management
+|--------------------------------------------------------------------------
+|
+| Approved / Published exam results سے official report-card snapshots،
+| verification codes، attendance، positions، signatures، issue اور
+| publication workflow manage کرے گا۔
+|
+*/
+
+app.use(
+  "/api/report-cards",
+  reportCardRoutes
 );
 
 /*

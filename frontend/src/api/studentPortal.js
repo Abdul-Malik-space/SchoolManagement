@@ -44,6 +44,39 @@ const buildGetConfig = (
 
 /*
 |--------------------------------------------------------------------------
+| Record ID Helper
+|--------------------------------------------------------------------------
+*/
+
+const requireRecordId = (
+  value,
+  label = "Record"
+) => {
+  const id =
+    typeof value ===
+    "object"
+      ? value?._id ||
+        value?.id
+      : value;
+
+  const normalizedId =
+    String(
+      id || ""
+    ).trim();
+
+  if (!normalizedId) {
+    throw new Error(
+      `${label} ID is required.`
+    );
+  }
+
+  return encodeURIComponent(
+    normalizedId
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
 | Student Portal Overview
 |--------------------------------------------------------------------------
 |
@@ -237,7 +270,7 @@ export const getStudentPortalTimetable = (
 | - Subjects
 | - Assigned teachers
 | - Academic module availability
-| - Future analytics placeholders
+| - Performance / results availability
 |
 */
 
@@ -282,6 +315,124 @@ export const getStudentPortalSubjects = (
 
 /*
 |--------------------------------------------------------------------------
+| Student Examination Results
+|--------------------------------------------------------------------------
+|
+| Endpoint:
+|
+| GET /api/student-portal/results
+|
+| The backend automatically resolves the authenticated Student.
+| No studentId is supplied from the frontend.
+|
+| Supported params:
+|
+| academicYear
+| academicTerm
+| overallResultStatus=pass|fail
+| page
+| limit
+|
+| Returns:
+|
+| - Student identity
+| - Published / locked results
+| - Marks and percentage
+| - Grade and GPA when enabled
+| - Class / section position when enabled
+| - Published report-card availability
+| - Result summary
+| - Pagination
+|
+*/
+
+export const getStudentPortalResults = (
+  params = {},
+  config = {}
+) => {
+  return api.get(
+    "/student-portal/results",
+    buildGetConfig(
+      params,
+      config
+    )
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| Student Examination Result Detail
+|--------------------------------------------------------------------------
+|
+| Endpoint:
+|
+| GET /api/student-portal/results/:resultId
+|
+| resultId selects the result record only.
+|
+| Backend ownership checks still enforce:
+|
+| authenticated schoolId
+| authenticated student's Student ID
+|
+| Therefore a student cannot access another student's result.
+|
+*/
+
+export const getStudentPortalResultById = (
+  resultId,
+  config = {}
+) => {
+  const id =
+    requireRecordId(
+      resultId,
+      "Result"
+    );
+
+  return api.get(
+    `/student-portal/results/${id}`,
+    config
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
+| Student Published Report Card
+|--------------------------------------------------------------------------
+|
+| Endpoint:
+|
+| GET /api/student-portal/report-cards/:reportCardId
+|
+| Backend returns only:
+|
+| - authenticated student's own report card
+| - published report card
+| - student-visible report card
+| - source result that is still published / locked
+|
+| Document URL is returned only if allowStudentDownload = true.
+|
+*/
+
+export const getStudentPortalReportCardById = (
+  reportCardId,
+  config = {}
+) => {
+  const id =
+    requireRecordId(
+      reportCardId,
+      "Report card"
+    );
+
+  return api.get(
+    `/student-portal/report-cards/${id}`,
+    config
+  );
+};
+
+/*
+|--------------------------------------------------------------------------
 | Combined Initial Portal Load
 |--------------------------------------------------------------------------
 |
@@ -320,6 +471,12 @@ export const loadStudentPortalInitialData =
     };
   };
 
+/*
+|--------------------------------------------------------------------------
+| Default Export
+|--------------------------------------------------------------------------
+*/
+
 export default {
   getStudentPortalOverview,
   getStudentPortalSnapshot,
@@ -329,5 +486,10 @@ export default {
   getStudentPortalTimetable,
   getStudentPortalAcademics,
   getStudentPortalSubjects,
+
+  getStudentPortalResults,
+  getStudentPortalResultById,
+  getStudentPortalReportCardById,
+
   loadStudentPortalInitialData
 };

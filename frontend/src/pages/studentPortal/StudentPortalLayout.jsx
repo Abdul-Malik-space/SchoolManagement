@@ -191,6 +191,26 @@ const primaryNavigation = [
 
   {
     label:
+      "Exams & Report Cards",
+
+    description:
+      "Results and report cards",
+
+    path:
+      "/student-portal/results",
+
+    icon:
+      GraduationCap,
+
+    capability:
+      "examinations",
+
+    defaultAvailable:
+      true
+  },
+
+  {
+    label:
       "Fees & Receipts",
 
     description:
@@ -252,26 +272,6 @@ const futureNavigation = [
 
     capability:
       "assignments",
-
-    defaultAvailable:
-      false
-  },
-
-  {
-    label:
-      "Exams & Report Cards",
-
-    description:
-      "Results and transcripts",
-
-    path:
-      "/student-portal/results",
-
-    icon:
-      GraduationCap,
-
-    capability:
-      "examinations",
 
     defaultAvailable:
       false
@@ -373,6 +373,17 @@ const mobileNavigation = [
 
     icon:
       CalendarCheck2
+  },
+
+  {
+    label:
+      "Results",
+
+    path:
+      "/student-portal/results",
+
+    icon:
+      GraduationCap
   },
 
   {
@@ -1362,13 +1373,21 @@ const StudentPortalLayout =
           }
 
           /*
-          | Academic progress page remains visible while detailed grades are
-          | still unavailable because it also contains subjects and readiness.
+          | Academic Progress remains visible because it also contains subjects
+          | and readiness information.
+          |
+          | Exams & Report Cards is now a live dedicated module, so keep the
+          | results route visible even if an older overview capability payload
+          | still reports examinations as unavailable.
           */
 
           if (
-            item.path ===
-            "/student-portal/academics"
+            [
+              "/student-portal/academics",
+              "/student-portal/results"
+            ].includes(
+              item.path
+            )
           ) {
             return true;
           }
@@ -2584,7 +2603,7 @@ const StudentPortalLayout =
         */}
 
         <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:hidden">
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid grid-cols-6 gap-1">
             {mobileNavigation.map(
               (
                 item

@@ -21,6 +21,7 @@ import {
   CircleUserRound,
   Clock3,
   GraduationCap,
+  FileText,
   Home,
   KeyRound,
   LogOut,
@@ -139,6 +140,20 @@ const navigationItems = [
 
   {
     label:
+      "Results & Report Cards",
+
+    description:
+      "Published exams and reports",
+
+    path:
+      "/parent-portal/results",
+
+    icon:
+      FileText
+  },
+
+  {
+    label:
       "Notices",
 
     description:
@@ -222,6 +237,14 @@ const pageDetails = {
 
     subtitle:
       "Review subjects, teachers and academic updates."
+  },
+
+  "/parent-portal/results": {
+    title:
+      "Results & Report Cards",
+
+    subtitle:
+      "Review published examination results and official report cards."
   },
 
   "/parent-portal/notices": {

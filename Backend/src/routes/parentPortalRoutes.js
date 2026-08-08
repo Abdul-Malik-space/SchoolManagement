@@ -1,6 +1,12 @@
 const express =
   require("express");
 
+/*
+|--------------------------------------------------------------------------
+| Parent Portal Main Controller
+|--------------------------------------------------------------------------
+*/
+
 const {
   getParentPortalOverview,
   getParentChildren,
@@ -14,12 +20,38 @@ const {
   "../controllers/parentPortalController"
 );
 
+/*
+|--------------------------------------------------------------------------
+| Parent Results and Report Cards Controller
+|--------------------------------------------------------------------------
+*/
+
+const {
+  getParentChildResults,
+  getParentChildResultById,
+  getParentChildReportCardById
+} = require(
+  "../controllers/parentPortalResultController"
+);
+
+/*
+|--------------------------------------------------------------------------
+| Authentication Middleware
+|--------------------------------------------------------------------------
+*/
+
 const {
   protect,
   authorize
 } = require(
   "../middlewares/authMiddleware"
 );
+
+/*
+|--------------------------------------------------------------------------
+| Object ID Validation
+|--------------------------------------------------------------------------
+*/
 
 const validateObjectId =
   require(
@@ -34,29 +66,54 @@ const router =
 | Parent Portal Security
 |--------------------------------------------------------------------------
 |
-| اس router کے تمام endpoints:
+| اس router کے تمام endpoints کیلئے:
 |
-| 1. Login authentication require کرتے ہیں۔
-| 2. صرف parent role کے لیے available ہیں۔
-| 3. Controller authenticated parent کے schoolId اور linked children کے
-|    مطابق data scope کرتا ہے۔
+| 1. Valid authenticated login ضروری ہے۔
+|
+| 2. صرف "parent" role access کر سکتا ہے۔
+|
+| 3. ParentPortal controllers authenticated parent کے:
+|
+|    - parent user ID
+|    - school ID
+|    - linked children
+|
+|    کے مطابق data scope کرتے ہیں۔
+|
+| 4. Child routes میں studentId URL میں record selector کے طور پر آتا ہے،
+|    لیکن controller ہمیشہ verify کرتا ہے کہ وہ child واقعی اسی parent کے
+|    ساتھ active + verified link رکھتا ہے۔
+|
+| 5. Result ID یا Report Card ID اکیلے access نہیں دیتے۔
 |
 */
 
 router.use(
   protect,
-  authorize("parent")
+  authorize(
+    "parent"
+  )
 );
 
 /*
 |--------------------------------------------------------------------------
-| Reusable Student ID Validation
+| Reusable Object ID Validators
 |--------------------------------------------------------------------------
 */
 
 const validateStudentId =
   validateObjectId(
     "studentId"
+  );
+
+const validateResultId =
+  validateObjectId(
+    "resultId"
+  );
+
+const validateReportCardId =
+  validateObjectId(
+    "reportCardId"
   );
 
 /*
@@ -66,8 +123,16 @@ const validateStudentId =
 |
 | GET /api/parent-portal/overview
 |
-| Parent، school، principal، children، attendance summary، fee balance،
-| today's classes اور unread message counters return کرتا ہے۔
+| Returns:
+|
+| - Parent account information
+| - School information
+| - Principal information
+| - Linked children
+| - Attendance summaries
+| - Fee balances
+| - Today's classes
+| - Message counters
 |
 */
 
@@ -120,10 +185,27 @@ router.get(
 | Supported query parameters:
 |
 | month=2026-07
+|
+| OR:
+|
 | from=2026-07-01
 | to=2026-07-31
+|
+| Pagination:
+|
 | page=1
 | limit=20
+|
+| Returns:
+|
+| - Present days
+| - Absent days
+| - Late days
+| - Leave days
+| - Attendance percentage
+| - Date-wise records
+| - Remarks
+| - Pagination
 |
 */
 
@@ -148,6 +230,15 @@ router.get(
 | page=1
 | limit=20
 |
+| Returns:
+|
+| - Total payable
+| - Total paid
+| - Outstanding amount
+| - Fee records
+| - Payment history
+| - Receipts
+|
 */
 
 router.get(
@@ -168,6 +259,16 @@ router.get(
 | rotationWeekCode=STANDARD
 | day=monday
 |
+| Returns:
+|
+| - Published timetable
+| - Today's classes
+| - Weekly timetable
+| - Subject
+| - Teacher
+| - Room
+| - Online meeting information
+|
 */
 
 router.get(
@@ -178,14 +279,180 @@ router.get(
 
 /*
 |--------------------------------------------------------------------------
+| Child Examination Results
+|--------------------------------------------------------------------------
+|
+| GET /api/parent-portal/children/:studentId/results
+|
+| Parent کو صرف اسی linked child کے:
+|
+| - published results
+| - locked results
+| - completed pass / fail results
+|
+| دکھائے جائیں گے۔
+|
+| Parent–Student Link requirements:
+|
+| - link must be active
+| - verificationStatus must be verified
+| - academics permission must be enabled
+|
+| Supported query parameters:
+|
+| academicYear=2026-2027
+| academicTerm=Term 1
+| overallResultStatus=pass|fail
+| page=1
+| limit=20
+|
+| Returns:
+|
+| - Child information
+| - Published examination results
+| - Total marks
+| - Obtained marks
+| - Percentage
+| - Grade
+| - GPA when enabled
+| - Class position when enabled
+| - Section position when enabled
+| - Published report-card availability
+| - Result summary
+| - Pagination
+|
+*/
+
+router.get(
+  "/children/:studentId/results",
+  validateStudentId,
+  getParentChildResults
+);
+
+/*
+|--------------------------------------------------------------------------
+| Child Examination Result Detail
+|--------------------------------------------------------------------------
+|
+| GET /api/parent-portal/children/:studentId/results/:resultId
+|
+| Security:
+|
+| resultId صرف result record selector ہے۔
+|
+| Controller لازماً verify کرتا ہے:
+|
+| - authenticated parent
+| - parent school
+| - linked child
+| - active parent-student link
+| - verified parent-student link
+| - academics permission
+| - ExamResult.studentId === linked child
+| - ExamResult.schoolId === parent school
+| - result published / locked ہو
+|
+| اگر Parent کسی دوسرے student کا valid resultId بھی URL میں دے تو
+| controller اسے access نہیں دے گا۔
+|
+| Returns:
+|
+| - Exam information
+| - Child information
+| - Subject-wise marks
+| - Passing marks
+| - Obtained marks
+| - Subject percentages
+| - Subject grades
+| - Overall percentage
+| - Overall grade
+| - GPA when enabled
+| - Class position
+| - Section position
+| - Attendance summary
+| - Teacher remarks
+| - Principal remarks
+| - Published report card
+|
+*/
+
+router.get(
+  "/children/:studentId/results/:resultId",
+  validateStudentId,
+  validateResultId,
+  getParentChildResultById
+);
+
+/*
+|--------------------------------------------------------------------------
+| Child Published Report Card
+|--------------------------------------------------------------------------
+|
+| GET
+| /api/parent-portal/children/:studentId/report-cards/:reportCardId
+|
+| Parent صرف linked child کا official published report card دیکھ سکتا ہے۔
+|
+| Report Card requirements:
+|
+| - student must belong to authenticated parent
+| - ParentStudentLink active ہو
+| - ParentStudentLink verified ہو
+| - academics permission enabled ہو
+| - reportCard.status = published
+| - reportCard.studentId = linked child
+| - reportCard.schoolId = parent school
+| - accessPolicy.allowParentView !== false
+| - visibility:
+|
+|     student_parent
+|     OR
+|     public_verification
+|
+| Source ExamResult بھی:
+|
+| - اسی linked child کا ہونا چاہیے
+| - published / locked ہونا چاہیے
+|
+| Download:
+|
+| Direct document URL صرف تب return ہوگا جب:
+|
+| accessPolicy.allowParentDownload === true
+|
+| ورنہ Parent report card preview اور print استعمال کر سکے گا، لیکن direct
+| stored document URL expose نہیں ہوگا۔
+|
+*/
+
+router.get(
+  "/children/:studentId/report-cards/:reportCardId",
+  validateStudentId,
+  validateReportCardId,
+  getParentChildReportCardById
+);
+
+/*
+|--------------------------------------------------------------------------
 | Child Academic Summary
 |--------------------------------------------------------------------------
 |
 | GET /api/parent-portal/children/:studentId/academics
 |
-| Current subjects اور assigned teachers return کرتا ہے۔ Examination result
-| module شامل ہونے کے بعد grades اور report cards بھی اسی response structure
-| میں شامل کیے جا سکیں گے۔
+| Returns:
+|
+| - Current subjects
+| - Assigned teachers
+| - Academic summary
+|
+| Examination Results اور Report Cards اب dedicated endpoints پر available
+| ہیں:
+|
+| GET /children/:studentId/results
+|
+| GET /children/:studentId/results/:resultId
+|
+| GET /children/:studentId/report-cards/:reportCardId
 |
 */
 
@@ -202,7 +469,7 @@ router.get(
 |
 | GET /api/parent-portal/children/:studentId/profile
 |
-| Existing portal naming pattern کے ساتھ compatibility کے لیے profile alias۔
+| Existing portal naming pattern کے ساتھ compatibility کیلئے profile alias۔
 |
 */
 
@@ -219,8 +486,19 @@ router.get(
 |
 | GET /api/parent-portal/children/:studentId
 |
-| Canonical child profile endpoint۔ اسے تمام nested child routes کے بعد رکھا
-| گیا ہے تاکہ route structure واضح اور maintainable رہے۔
+| Canonical child profile endpoint۔
+|
+| IMPORTANT:
+|
+| یہ dynamic route تمام specific nested child routes کے بعد رکھا گیا ہے۔
+|
+| مثال:
+|
+| /children/:studentId/results
+| /children/:studentId/attendance
+| /children/:studentId/fees
+|
+| پہلے match ہوں گے اور generic profile route آخر میں رہے گا۔
 |
 */
 

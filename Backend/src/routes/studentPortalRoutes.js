@@ -14,6 +14,20 @@ const {
   "../controllers/studentPortalController"
 );
 
+/*
+|--------------------------------------------------------------------------
+| Student Result and Report Card Controller
+|--------------------------------------------------------------------------
+*/
+
+const {
+  getStudentPortalResults,
+  getStudentPortalResultById,
+  getStudentPortalReportCardById
+} = require(
+  "../controllers/studentPortalResultController"
+);
+
 const {
   protect,
   authorize
@@ -33,10 +47,10 @@ const router =
 |
 | 1. Valid login token ضروری ہے۔
 | 2. صرف "student" role اجازت رکھتا ہے۔
-| 3. Controller authenticated user کے studentUserId اور schoolId سے Student
-|    profile خود resolve کرتا ہے۔
-| 4. Client request سے کوئی studentId قبول نہیں کیا جاتا، اس لیے طالب علم
-|    دوسرے طالب علم کا record access نہیں کر سکتا۔
+| 3. Controllers authenticated user کے studentUserId اور schoolId سے
+|    Student profile خود resolve کرتے ہیں۔
+| 4. Client request سے کوئی studentId قبول نہیں کیا جاتا۔
+| 5. Student کسی دوسرے student کا result یا report card access نہیں کر سکتا۔
 |
 */
 
@@ -243,6 +257,129 @@ router.get(
 
 /*
 |--------------------------------------------------------------------------
+| Student Examination Results
+|--------------------------------------------------------------------------
+|
+| GET /api/student-portal/results
+|
+| Student کو صرف اپنے:
+|
+| - Published results
+| - Locked results
+| - Complete Pass / Fail results
+|
+| دکھائے جائیں گے۔
+|
+| Client سے studentId نہیں لیا جاتا۔
+|
+| Supported query options:
+|
+| academicYear=2026-2027
+| academicTerm=Term 1
+| overallResultStatus=pass|fail
+| page=1
+| limit=20
+|
+| Returns:
+|
+| - Student information
+| - Published examination results
+| - Total marks
+| - Obtained marks
+| - Percentage
+| - Grade
+| - GPA when enabled
+| - Class position when enabled
+| - Section position when enabled
+| - Report-card availability
+| - Result summary
+| - Pagination
+|
+*/
+
+router.get(
+  "/results",
+  getStudentPortalResults
+);
+
+/*
+|--------------------------------------------------------------------------
+| Student Examination Result Detail
+|--------------------------------------------------------------------------
+|
+| GET /api/student-portal/results/:resultId
+|
+| Important Security:
+|
+| resultId صرف record selector ہے۔
+|
+| Controller query میں لازماً:
+|
+| - authenticated student's schoolId
+| - authenticated Student record ID
+|
+| شامل ہوتے ہیں۔
+|
+| اس لیے اگر student کسی دوسرے student کا valid resultId بھی دے، تب بھی
+| اسے وہ result نہیں ملے گا۔
+|
+| Returns:
+|
+| - Exam information
+| - Student information
+| - Subject-wise marks
+| - Subject result status
+| - Grades
+| - Total marks
+| - Percentage
+| - GPA when enabled
+| - Class / Section position when enabled
+| - Attendance summary when enabled
+| - Teacher remarks when enabled
+| - Principal remarks when enabled
+| - Published report-card information
+|
+*/
+
+router.get(
+  "/results/:resultId",
+  getStudentPortalResultById
+);
+
+/*
+|--------------------------------------------------------------------------
+| Student Published Report Card
+|--------------------------------------------------------------------------
+|
+| GET /api/student-portal/report-cards/:reportCardId
+|
+| Student صرف اپنا published report card دیکھ سکتا ہے۔
+|
+| Report Card access rules:
+|
+| - status = published
+| - allowStudentView !== false
+| - visibility = student_parent OR public_verification
+| - schoolId must match authenticated student
+| - studentId must match authenticated student
+| - source ExamResult must still be published / locked
+|
+| Download URL صرف تب return ہوگا جب:
+|
+| allowStudentDownload = true
+|
+| Otherwise student report card دیکھ اور print کر سکتا ہے، لیکن backend
+| document download URL expose نہیں کرے گا۔
+|
+*/
+
+router.get(
+  "/report-cards/:reportCardId",
+  getStudentPortalReportCardById
+);
+
+/*
+|--------------------------------------------------------------------------
 | Subjects and Academic Summary
 |--------------------------------------------------------------------------
 |
@@ -253,10 +390,14 @@ router.get(
 | - Class subjects
 | - Assigned teachers
 | - Subject and teacher counts
-| - Availability status for future academic modules
+| - Availability status for academic modules
 |
-| Results, assignments, examinations and report cards will become available
-| here when their dedicated models are added.
+| Dedicated published-result endpoints اب:
+|
+| GET /api/student-portal/results
+| GET /api/student-portal/results/:resultId
+|
+| پر available ہیں۔
 |
 */
 
@@ -272,8 +413,8 @@ router.get(
 |
 | GET /api/student-portal/subjects
 |
-| Frontend menu may use "Subjects" while the consolidated API remains
-| academic-summary based. Both paths return the same secure response.
+| Frontend menu "Subjects" استعمال کر سکتا ہے جبکہ consolidated academic
+| summary endpoint بھی اسی controller کو استعمال کرتا ہے۔
 |
 */
 
@@ -281,6 +422,12 @@ router.get(
   "/subjects",
   getStudentPortalAcademicSummary
 );
+
+/*
+|--------------------------------------------------------------------------
+| Export Router
+|--------------------------------------------------------------------------
+*/
 
 module.exports =
   router;

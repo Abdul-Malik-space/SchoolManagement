@@ -258,6 +258,8 @@ import StudentSubjects from "./pages/studentPortal/StudentSubjects";
 
 import StudentAcademics from "./pages/studentPortal/StudentAcademics";
 
+import StudentResults from "./pages/studentPortal/StudentResults";
+
 import StudentFees from "./pages/studentPortal/StudentFees";
 
 import StudentMessages from "./pages/studentPortal/StudentMessages";
@@ -1500,6 +1502,11 @@ function App() {
         <Route
           path="academics"
           element={<StudentAcademics />}
+        />
+
+        <Route
+          path="results"
+          element={<StudentResults />}
         />
 
         <Route
